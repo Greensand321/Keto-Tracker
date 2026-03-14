@@ -461,15 +461,34 @@ function handleImport(e){
     try{
       const raw=JSON.parse(ev.target.result);
       if(typeof raw!=='object'||Array.isArray(raw))throw 0;
-      if(!confirm('Overwrite current entries with imported data?')){e.target.value='';return;}
-      allKeys().forEach(k=>localStorage.removeItem('kt_d_'+k));
+      // Validate and normalise all entries from the file
+      const valid={};
       for(const[k,v]of Object.entries(raw)){
-        // Accept both bare date keys and old-style kt_YYYY-MM-DD keys
         const dk=k.startsWith('kt_d_')?k.slice(5):k.startsWith('kt_')?k.slice(3):k;
-        if(/^\d{4}-\d{2}-\d{2}$/.test(dk)&&typeof v==='object')lsSetDay(dk,v);
+        if(/^\d{4}-\d{2}-\d{2}$/.test(dk)&&typeof v==='object')valid[dk]=v;
       }
+      const total=Object.keys(valid).length;
+      if(!total){toast('No valid entries found in file',true);e.target.value='';return;}
+      // Split into new entries and collisions
+      const existing=new Set(allKeys());
+      const newKeys=Object.keys(valid).filter(k=>!existing.has(k));
+      const dupKeys=Object.keys(valid).filter(k=>existing.has(k));
+      // First confirm — show what will be merged
+      const summary=`${newKeys.length} new day${newKeys.length!==1?'s':''} to add`+(dupKeys.length?`, ${dupKeys.length} duplicate${dupKeys.length!==1?'s':''} found`:'');
+      if(!confirm(`Merge import into your existing data?\n\n${summary}`)){e.target.value='';return;}
+      // Collision handling — only ask if there are duplicates
+      let overwriteDups=false;
+      if(dupKeys.length){
+        overwriteDups=confirm(`${dupKeys.length} day${dupKeys.length!==1?'s already exist':'already exists'} in your data.\n\nOK → overwrite with imported data\nCancel → keep your existing data for those days`);
+      }
+      // Write entries — new always, duplicates only if user chose to overwrite
+      newKeys.forEach(dk=>lsSetDay(dk,valid[dk]));
+      if(overwriteDups)dupKeys.forEach(dk=>lsSetDay(dk,valid[dk]));
       vk=todayKey();ent=load(vk);si=defStep(ent);render();
-      toast('Data imported ✓');closeSettings();
+      const written=newKeys.length+(overwriteDups?dupKeys.length:0);
+      const skipped=dupKeys.length&&!overwriteDups?` · ${dupKeys.length} duplicate${dupKeys.length!==1?'s':''} kept`:'';
+      toast(`Imported ${written} day${written!==1?'s':''}${skipped} ✓`);
+      closeSettings();
     }catch{toast('Invalid file — import failed',true);}
     e.target.value='';
   };

@@ -425,7 +425,15 @@ Accepts JSON files where keys are dates in any of these formats:
 - `kt_d_YYYY-MM-DD` (full storage key)
 - `kt_YYYY-MM-DD` (legacy prefix)
 
-The importer strips any prefix, validates the date format, and merges after confirmation. **Import is destructive** — it clears all existing data before restoring.
+The importer strips any prefix, validates the date format, then performs a **non-destructive merge**:
+
+1. Entries are split into **new** (date not in current data) and **duplicates** (date already exists)
+2. First confirm — shows counts of new days and duplicates, asks to proceed
+3. If duplicates exist, a second confirm asks whether to overwrite them or skip them
+4. New entries are always written; duplicates are written only if the user chose to overwrite
+5. Toast reports exactly how many days were imported and how many duplicates were kept
+
+Existing data is never cleared. The worst case is a duplicate entry being overwritten if the user explicitly approves it.
 
 ---
 
