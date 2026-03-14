@@ -628,10 +628,8 @@ function renderStep(){
     body=`<div class="card"><div><div class="step-lbl">${m.lbl}</div><div class="step-title">${m.ic} ${m.title}</div><div class="step-sub">${m.sub}</div></div>${inp}${acts}</div>`;
   }
   const mainEl=document.getElementById('main');
-  mainEl.style.transition='none';
   mainEl.innerHTML=`${step!=='summary'?`<div class="dots">${dots}</div>`:''}${body}`;
   mainEl.scrollTop=0;
-  requestAnimationFrame(()=>mainEl.style.transition='');
   if(['breakfast','lunch','dinner','notes'].includes(step)){const ta=document.getElementById('ta');if(ta)setTimeout(()=>ta.focus(),80);}
   if(['breakfast','lunch','dinner'].includes(step))loadMealPhoto(step);
   if(step==='summary')loadSummaryPhotoIcons();
@@ -903,14 +901,13 @@ function buildCal(){
   const dataSet=new Set(allKeys());
   const offKetoSet=new Set();
   const first=new Date(_calYear,_calMonth,1);
-  const last=new Date(_calYear,_calMonth+1,0);
-  for(let d=new Date(first);d<=last;d.setDate(d.getDate()+1)){
-    const k=d.toISOString().slice(0,10);
-    if(dataSet.has(k)&&load(k).notInKeto)offKetoSet.add(k);
+  const daysInMonth=new Date(_calYear,_calMonth+1,0).getDate();
+  for(let day=1;day<=daysInMonth;day++){
+    const k=`${_calYear}-${String(_calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    try{if(dataSet.has(k)&&load(k).notInKeto)offKetoSet.add(k);}catch(e){}
   }
   document.getElementById('calTitle').textContent=CAL_MONTHS[_calMonth]+' '+_calYear;
   const startDow=first.getDay();
-  const daysInMonth=last.getDate();
   const TOTAL=42;
   let cells='';
 
