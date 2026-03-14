@@ -490,6 +490,11 @@ function renderSettings(){
     </div>
 
     <div class="set-section">
+      <div class="set-label">App Version</div>
+      <div class="storage-box" style="font-size:.88rem;color:var(--txt-m)">Version <strong style="color:var(--txt)">${APP_VERSION}</strong></div>
+    </div>
+
+    <div class="set-section">
       <div class="set-label">Storage</div>
       <div class="storage-box">
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
@@ -548,6 +553,9 @@ function doSaveSnap(){
   if(saveSnapshot(name)){inp.value='';toast('Snapshot saved ✓');renderSettings();}
 }
 
+// ── VERSION ───────────────────────────────────────────────────────────────────
+const APP_VERSION = '1.2';
+
 // ── TRACKER ──────────────────────────────────────────────────────────────────
 const STEPS=['breakfast','lunch','dinner','energy','happiness','portion','flags','notes','summary'];
 const META={
@@ -605,7 +613,7 @@ function renderStep(){
     let inp='';
     if(m.type==='txt'){
       const isMeal=['breakfast','lunch','dinner'].includes(step);
-      inp=`<textarea id="ta" rows="4" placeholder="${PH[step]||''}" oninput="upd('${step}',this.value)">${ent[step]||''}</textarea>${isMeal?'<div id="photo-area"></div>':''}`;
+      inp=`<textarea id="ta" rows="4" placeholder="${PH[step]||''}" oninput="upd('${step}',this.value)">${ent[step]||''}</textarea>`;
     }else if(m.type==='rate'){
       const lbls=step==='portion'?PLBL:RLBL;
       inp=`<div class="r-grid">${[1,2,3,4,5].map(n=>`<button class="r-btn${ent[step]===n?' sel':''}" onclick="selRate('${step}',${n})">${n}<span class="rlbl">${lbls[n]}</span></button>`).join('')}</div>`;
@@ -629,7 +637,7 @@ function renderStep(){
           ${isTxt?`<button class="btn btn-skip" onclick="skip()">Skip</button>`:''}
         </div>`
       :`<div class="actions"><button class="btn btn-main" onclick="goToday()">↩ Go to Today</button></div>`;
-    body=`<div class="card"><div><div class="step-lbl">${m.lbl}</div><div class="step-title">${m.ic} ${m.title}</div><div class="step-sub">${m.sub}</div></div>${inp}${acts}</div>`;
+    body=`<div class="card"><div><div class="step-lbl">${m.lbl}</div><div class="step-title">${m.ic} ${m.title}</div><div class="step-sub">${m.sub}</div></div>${inp}${acts}${isMealStep?'<div id="photo-area"></div>':''}</div>`;
   }
   document.getElementById('main').innerHTML=`${step!=='summary'?`<div class="dots">${dots}</div>`:''}${body}`;
   if(['breakfast','lunch','dinner','notes'].includes(step)){const ta=document.getElementById('ta');if(ta)setTimeout(()=>ta.focus(),80);}
