@@ -521,6 +521,18 @@ function dlJSON(obj,fname){
   a.href='data:application/json,'+encodeURIComponent(JSON.stringify(obj,null,2));
   a.download=fname;a.click();
 }
+// Merge imported entry into existing entry field by field.
+// Imported value only fills a field if the existing value is empty (null, '', false).
+function mergeEntries(existing,imported){
+  const merged={...existing};
+  for(const field of Object.keys(imported)){
+    const ex=existing[field],imp=imported[field];
+    const empty=ex===null||ex===''||ex===false||ex===undefined;
+    if(empty&&imp!==null&&imp!==''&&imp!==undefined)merged[field]=imp;
+  }
+  return merged;
+}
+
 function handleImport(e){
   const file=e.target.files[0];if(!file)return;
   const r=new FileReader();
@@ -528,15 +540,41 @@ function handleImport(e){
     try{
       const raw=JSON.parse(ev.target.result);
       if(typeof raw!=='object'||Array.isArray(raw))throw 0;
-      if(!confirm('Overwrite current entries with imported data?')){e.target.value='';return;}
-      allKeys().forEach(k=>Storage.day.delete(k));
+      // Validate and normalise all entries from the file
+      const valid={};
       for(const[k,v]of Object.entries(raw)){
-        // Accept both bare date keys and old-style kt_YYYY-MM-DD keys
         const dk=k.startsWith('kt_d_')?k.slice(5):k.startsWith('kt_')?k.slice(3):k;
-        if(/^\d{4}-\d{2}-\d{2}$/.test(dk)&&typeof v==='object')lsSetDay(dk,v);
+        if(/^\d{4}-\d{2}-\d{2}$/.test(dk)&&typeof v==='object')valid[dk]=v;
       }
+      if(!Object.keys(valid).length){toast('No valid entries found in file',true);e.target.value='';return;}
+      // Split into new entries and duplicates
+      const existingSet=new Set(allKeys());
+      const newKeys=Object.keys(valid).filter(k=>!existingSet.has(k));
+      const dupKeys=Object.keys(valid).filter(k=>existingSet.has(k));
+      // First confirm — show counts
+      const summary=`${newKeys.length} new day${newKeys.length!==1?'s':''} to add`+(dupKeys.length?` · ${dupKeys.length} duplicate${dupKeys.length!==1?'s':''} found`:'');
+      if(!confirm(`Merge import into your existing data?\n\n${summary}`)){e.target.value='';return;}
+      // Duplicate handling — three modes via two dialogs
+      let dupMode='skip'; // 'merge' | 'overwrite' | 'skip'
+      if(dupKeys.length){
+        const wantMerge=confirm(`${dupKeys.length} day${dupKeys.length!==1?'s':''}  already exist in your data.\n\nOK → Merge (fill empty fields only — existing values kept)\nCancel → choose overwrite or skip`);
+        if(wantMerge){dupMode='merge';}
+        else{
+          const wantOverwrite=confirm(`Overwrite the ${dupKeys.length} duplicate day${dupKeys.length!==1?'s':''} entirely?\n\nOK → Overwrite (imported replaces existing)\nCancel → Skip (keep existing, ignore imported)`);
+          dupMode=wantOverwrite?'overwrite':'skip';
+        }
+      }
+      // Write new entries
+      newKeys.forEach(dk=>lsSetDay(dk,valid[dk]));
+      // Handle duplicates per chosen mode
+      if(dupMode==='merge')dupKeys.forEach(dk=>lsSetDay(dk,mergeEntries(load(dk),valid[dk])));
+      else if(dupMode==='overwrite')dupKeys.forEach(dk=>lsSetDay(dk,valid[dk]));
       vk=todayKey();ent=load(vk);si=defStep(ent);render();
-      toast('Data imported ✓');closeSettings();
+      const dupCount=dupMode!=='skip'?dupKeys.length:0;
+      const written=newKeys.length+dupCount;
+      const modeLabel=dupKeys.length?(dupMode==='merge'?' (merged)':dupMode==='overwrite'?' (overwritten)':` · ${dupKeys.length} duplicate${dupKeys.length!==1?'s':''} skipped`):'';
+      toast(`Imported ${written} day${written!==1?'s':''}${modeLabel} ✓`);
+      closeSettings();
     }catch{toast('Invalid file — import failed',true);}
     e.target.value='';
   };
