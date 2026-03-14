@@ -563,7 +563,7 @@ const RLBL={1:'Low',2:'Poor',3:'Okay',4:'Good',5:'Great'};
 const PLBL={1:'Tiny',2:'Small',3:'Normal',4:'Large',5:'Huge'};
 const PH={breakfast:'2 eggs, bacon, avocado',lunch:'Grilled chicken salad',dinner:'Steak with broccoli',notes:'Had cravings at 3pm...'};
 
-const todayKey=()=>new Date().toISOString().slice(0,10);
+const todayKey=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const fmtDate=k=>{const d=new Date(k+'T12:00:00');return['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+', '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getDate();};
 const offKey=(k,n)=>{const dt=new Date(k+'T12:00:00');dt.setDate(dt.getDate()+n);return dt.toISOString().slice(0,10);};
 const smartStep=()=>{const h=new Date().getHours();if(h<10)return'breakfast';if(h<14)return'lunch';if(h<20)return'dinner';return'energy';};
@@ -595,10 +595,10 @@ function render(){
 
 
 function renderStep(){
-  const step=STEPS[si],m=META[step],isT=vk===todayKey();
+  const step=STEPS[si],m=META[step],isT=vk===todayKey(),isFut=vk>todayKey();
   const dots=STEPS.filter(s=>s!=='summary').map((s)=>{const idx=STEPS.indexOf(s);return`<div class="dot${idx<si?' done':idx===si?' active':''}"></div>`;}).join('');
   let body='';
-  if(step==='summary'){body=renderSum(isT);}
+  if(step==='summary'){body=renderSum(isT,!isFut);}
   else{
     let inp='';
     if(m.type==='txt'){
@@ -618,7 +618,7 @@ function renderStep(){
       </div>`;
     }
     const isTxt=m.type==='txt';
-    const acts=isT
+    const acts=!isFut
       ?`<div class="actions">
           ${si>0?`<button class="btn btn-back" onclick="back()">‹</button>`:''}
           <button class="btn btn-main" onclick="next()">${si<STEPS.length-2?'Next →':'Finish ✓'}</button>
@@ -633,7 +633,7 @@ function renderStep(){
   if(step==='summary')loadSummaryPhotoIcons();
 }
 
-function renderSum(isT){
+function renderSum(isT,canEdit=isT){
   const e=ent;
   const rows=[
     {ic:'🍳',k:'Breakfast',v:e.breakfast||null,si:0,meal:'breakfast'},
@@ -647,13 +647,13 @@ function renderSum(isT){
   const badges=[];
   if(e.notInKeto)badges.push(`<span class="badge b-red">⚠️ Off Keto</span>`);
   if(e.tested)badges.push(`<span class="badge b-grn">🧪 Tested</span>`);
-  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}${r.meal?`<span id="ph-ic-${r.meal}"></span>`:''}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div></div>${isT?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
-  const flagRow=badges.length?`<div class="sum-row"><div class="sum-ic">🚩</div><div class="sum-body"><div class="sum-key">Flags</div><div class="badges">${badges.join('')}</div></div>${isT?`<button class="sum-edit" onclick="editAt(6)">✏️</button>`:''}</div>`:'';
+  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}${r.meal?`<span id="ph-ic-${r.meal}"></span>`:''}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div></div>${canEdit?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
+  const flagRow=badges.length?`<div class="sum-row"><div class="sum-ic">🚩</div><div class="sum-body"><div class="sum-key">Flags</div><div class="badges">${badges.join('')}</div></div>${canEdit?`<button class="sum-edit" onclick="editAt(6)">✏️</button>`:''}</div>`:'';
   return`<div class="card">
     <div><div class="step-lbl">${fmtDate(vk)}</div><div class="step-title">✅ ${isT?"Today's Log":"Day Summary"}</div></div>
     ${isT?`<div class="done-banner">🎉 Great job logging today!</div>`:''}
     <div class="sum-rows">${rHtml}${flagRow}</div>
-    ${isT?`<button class="edit-all-btn" onclick="editAt(0)">✏️ Edit all entries</button>`:''}
+    ${canEdit?`<button class="edit-all-btn" onclick="editAt(0)">✏️ Edit all entries</button>`:''}
   </div>`;
 }
 
