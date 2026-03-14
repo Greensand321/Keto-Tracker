@@ -190,6 +190,13 @@ textarea::placeholder{color:var(--txt-d)}
   .main{padding:28px 24px 16px;max-width:560px;margin:0 auto;width:100%}
   .step-title{font-size:2.2rem}
 }
+
+.cam-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--surf2);border:1.5px dashed var(--bd-i);border-radius:13px;color:var(--txt-m);font-size:.9rem;padding:14px;cursor:pointer;width:100%;font-family:inherit;transition:.2s}
+.cam-btn:active{transform:scale(.97)}
+.photo-wrap{position:relative;margin-top:4px;border-radius:13px;overflow:hidden}
+.photo-thumb{width:100%;display:block;max-height:260px;object-fit:cover;cursor:pointer}
+.photo-del{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.65);color:#fff;border:none;border-radius:50%;width:30px;height:30px;font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.photo-ic{font-size:.8rem;cursor:pointer;margin-left:5px;vertical-align:middle;opacity:.8}
 </style>
 </head>
 <body>
@@ -225,6 +232,14 @@ textarea::placeholder{color:var(--txt-d)}
 
 <div class="toast" id="toast"></div>
 <input type="file" id="fileIn" accept=".json" style="display:none" onchange="handleImport(event)">
+<input type="file" id="camIn" accept="image/*" capture="environment" style="display:none" onchange="handleCamera(event)">
+
+<div id="photoModal" class="fs-modal">
+  <div class="fs-hdr"><div class="fs-title">📷 Meal Photo</div><button class="ico-btn" onclick="closePhotoModal()">✕</button></div>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:16px">
+    <img id="photoModalImg" style="max-width:100%;max-height:100%;border-radius:13px;object-fit:contain">
+  </div>
+</div>
 
 <script>
 // ── THEME ────────────────────────────────────────────────────────────────────
@@ -504,7 +519,8 @@ function renderStep(){
   else{
     let inp='';
     if(m.type==='txt'){
-      inp=`<textarea id="ta" rows="4" placeholder="${PH[step]||''}" oninput="upd('${step}',this.value)">${ent[step]||''}</textarea>`;
+      const isMeal=['breakfast','lunch','dinner'].includes(step);
+      inp=`<textarea id="ta" rows="4" placeholder="${PH[step]||''}" oninput="upd('${step}',this.value)">${ent[step]||''}</textarea>${isMeal?'<div id="photo-area"></div>':''}`;
     }else if(m.type==='rate'){
       const lbls=step==='portion'?PLBL:RLBL;
       inp=`<div class="r-grid">${[1,2,3,4,5].map(n=>`<button class="r-btn${ent[step]===n?' sel':''}" onclick="selRate('${step}',${n})">${n}<span class="rlbl">${lbls[n]}</span></button>`).join('')}</div>`;
@@ -530,14 +546,16 @@ function renderStep(){
   }
   document.getElementById('main').innerHTML=`${step!=='summary'?`<div class="dots">${dots}</div>`:''}${body}`;
   if(['breakfast','lunch','dinner','notes'].includes(step)){const ta=document.getElementById('ta');if(ta)setTimeout(()=>ta.focus(),80);}
+  if(['breakfast','lunch','dinner'].includes(step))loadMealPhoto(step);
+  if(step==='summary')loadSummaryPhotoIcons();
 }
 
 function renderSum(isT){
   const e=ent;
   const rows=[
-    {ic:'🍳',k:'Breakfast',v:e.breakfast||null,si:0},
-    {ic:'🥗',k:'Lunch',    v:e.lunch||null,    si:1},
-    {ic:'🍽️',k:'Dinner',  v:e.dinner||null,   si:2},
+    {ic:'🍳',k:'Breakfast',v:e.breakfast||null,si:0,meal:'breakfast'},
+    {ic:'🥗',k:'Lunch',    v:e.lunch||null,    si:1,meal:'lunch'},
+    {ic:'🍽️',k:'Dinner',  v:e.dinner||null,   si:2,meal:'dinner'},
     {ic:'⚡',k:'Energy',   v:e.energy   ?`${e.energy}/5 — ${RLBL[e.energy]}`    :null,si:3},
     {ic:'😊',k:'Happiness',v:e.happiness?`${e.happiness}/5 — ${RLBL[e.happiness]}`:null,si:4},
     {ic:'🍽',k:'Portions', v:e.portion  ?`${e.portion}/5 — ${PLBL[e.portion]}`  :null,si:5},
@@ -546,7 +564,7 @@ function renderSum(isT){
   const badges=[];
   if(e.notInKeto)badges.push(`<span class="badge b-red">⚠️ Off Keto</span>`);
   if(e.tested)badges.push(`<span class="badge b-grn">🧪 Tested</span>`);
-  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div></div>${isT?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
+  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}${r.meal?`<span id="ph-ic-${r.meal}"></span>`:''}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div></div>${isT?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
   const flagRow=badges.length?`<div class="sum-row"><div class="sum-ic">🚩</div><div class="sum-body"><div class="sum-key">Flags</div><div class="badges">${badges.join('')}</div></div>${isT?`<button class="sum-edit" onclick="editAt(6)">✏️</button>`:''}</div>`:'';
   return`<div class="card">
     <div><div class="step-lbl">${fmtDate(vk)}</div><div class="step-title">✅ ${isT?"Today's Log":"Day Summary"}</div></div>
@@ -615,6 +633,154 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   });
 }
+
+// ── PHOTO STORAGE (IndexedDB) ─────────────────────────────────────────────────
+const PH_DB = 'keto-photos', PH_STORE = 'photos';
+let _phDB = null;
+
+function openPhDB() {
+  if (_phDB) return Promise.resolve(_phDB);
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(PH_DB, 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore(PH_STORE);
+    r.onsuccess = e => { _phDB = e.target.result; res(_phDB); };
+    r.onerror = rej;
+  });
+}
+function phKey(date, meal) { return date + '_' + meal; }
+function savePhotoBlob(date, meal, blob) {
+  return openPhDB().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(PH_STORE, 'readwrite');
+    tx.objectStore(PH_STORE).put(blob, phKey(date, meal));
+    tx.oncomplete = res; tx.onerror = rej;
+  }));
+}
+function getPhotoBlob(date, meal) {
+  return openPhDB().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(PH_STORE, 'readonly');
+    const r = tx.objectStore(PH_STORE).get(phKey(date, meal));
+    r.onsuccess = e => res(e.target.result || null); r.onerror = rej;
+  }));
+}
+function deletePhotoBlob(date, meal) {
+  return openPhDB().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(PH_STORE, 'readwrite');
+    tx.objectStore(PH_STORE).delete(phKey(date, meal));
+    tx.oncomplete = res; tx.onerror = rej;
+  }));
+}
+
+// ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
+function compressImage(file, maxPx = 900, quality = 0.75) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let {width, height} = img;
+      if (width > maxPx || height > maxPx) {
+        if (width >= height) { height = Math.round(height * maxPx / width); width = maxPx; }
+        else { width = Math.round(width * maxPx / height); height = maxPx; }
+      }
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      c.getContext('2d').drawImage(img, 0, 0, width, height);
+      c.toBlob(resolve, 'image/jpeg', quality);
+    };
+    img.src = url;
+  });
+}
+
+// ── CAMERA CAPTURE ────────────────────────────────────────────────────────────
+let _capMeal = null;
+
+function openCamera(meal) {
+  _capMeal = meal;
+  document.getElementById('camIn').click();
+}
+
+async function handleCamera(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file || !_capMeal) return;
+  try {
+    const blob = await compressImage(file);
+    await savePhotoBlob(vk, _capMeal, blob);
+    loadMealPhoto(_capMeal);
+    toast('Photo saved ✓');
+  } catch { toast('Could not save photo', true); }
+}
+
+async function removeMealPhoto(meal) {
+  await deletePhotoBlob(vk, meal);
+  loadMealPhoto(meal);
+  toast('Photo removed');
+}
+
+// ── MEAL STEP PHOTO AREA ──────────────────────────────────────────────────────
+const _objURLs = {};
+
+async function loadMealPhoto(meal) {
+  const area = document.getElementById('photo-area');
+  if (!area) return;
+  const blob = await getPhotoBlob(vk, meal);
+  if (_objURLs[meal]) { URL.revokeObjectURL(_objURLs[meal]); delete _objURLs[meal]; }
+  if (blob) {
+    const url = URL.createObjectURL(blob);
+    _objURLs[meal] = url;
+    area.innerHTML = `<div class="photo-wrap">
+      <img class="photo-thumb" src="${url}" onclick="openPhotoModal('${meal}')">
+      <button class="photo-del" onclick="removeMealPhoto('${meal}')">✕</button>
+    </div>`;
+  } else {
+    area.innerHTML = `<button class="cam-btn" onclick="openCamera('${meal}')">📷 Add Photo</button>`;
+  }
+}
+
+// ── PHOTO MODAL (fullscreen view) ─────────────────────────────────────────────
+async function openPhotoModal(meal) {
+  const blob = await getPhotoBlob(vk, meal);
+  if (!blob) return;
+  if (_objURLs['modal']) { URL.revokeObjectURL(_objURLs['modal']); delete _objURLs['modal']; }
+  const url = URL.createObjectURL(blob);
+  _objURLs['modal'] = url;
+  document.getElementById('photoModalImg').src = url;
+  document.getElementById('photoModal').classList.add('open');
+}
+function closePhotoModal() { document.getElementById('photoModal').classList.remove('open'); }
+
+// ── SUMMARY PHOTO INDICATORS ──────────────────────────────────────────────────
+async function loadSummaryPhotoIcons() {
+  for (const meal of ['breakfast', 'lunch', 'dinner']) {
+    const el = document.getElementById('ph-ic-' + meal);
+    if (!el) continue;
+    const blob = await getPhotoBlob(vk, meal);
+    el.innerHTML = blob ? ` <span class="photo-ic" onclick="openPhotoModal('${meal}')">📷</span>` : '';
+  }
+}
+
+// ── SWIPE NAVIGATION ─────────────────────────────────────────────────────────
+(function(){
+  let sx=0,sy=0;
+  const el=document.getElementById('main');
+  el.addEventListener('touchstart',e=>{
+    sx=e.touches[0].clientX;
+    sy=e.touches[0].clientY;
+  },{passive:true});
+  el.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-sx;
+    const dy=e.changedTouches[0].clientY-sy;
+    if(Math.abs(dx)<50||Math.abs(dx)<Math.abs(dy))return;
+    const isT=vk===todayKey();
+    const onWizard=isT&&STEPS[si]!=='summary';
+    if(onWizard){
+      if(dx<0)next();else back();
+    }else{
+      if(dx<0){if(!document.getElementById('nextBtn').disabled)chgDay(1);}
+      else chgDay(-1);
+    }
+  },{passive:true});
+})();
 </script>
 </body>
 </html>
