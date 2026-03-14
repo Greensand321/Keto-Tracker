@@ -121,8 +121,12 @@ textarea::placeholder{color:var(--txt-d)}
 .fs-body{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px}
 .fs-body::-webkit-scrollbar{display:none}
 
-.ov-card{background:var(--surf);border:1px solid var(--bd);border-radius:16px;padding:16px;cursor:pointer;transition:.15s}
+.ov-card{background:var(--surf);border:1px solid var(--bd);border-radius:16px;padding:16px;cursor:pointer;transition:.15s;position:relative;user-select:none}
 .ov-card:active{transform:scale(.98)}
+.ov-card.selected{border-color:var(--accent);background:rgba(92,184,92,.1)}
+.ov-chk{display:none;position:absolute;top:10px;right:10px;background:var(--accent);color:#fff;border-radius:50%;width:22px;height:22px;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;pointer-events:none}
+.ov-card.selected .ov-chk{display:flex}
+.sel-del-btn{background:var(--red);color:#fff;border:none;border-radius:10px;padding:6px 14px;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit}
 .ov-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .ov-date{font-size:.95rem;font-weight:700;color:var(--gold)}
 .ov-meals{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
@@ -216,7 +220,7 @@ textarea::placeholder{color:var(--txt-d)}
 </div>
 
 <div id="ovModal" class="fs-modal">
-  <div class="fs-hdr"><div class="fs-title">📋 All Days</div><button class="ico-btn" onclick="closeOverview()">✕</button></div>
+  <div id="ovHdr" class="fs-hdr"><div class="fs-title">📋 All Days</div><button class="ico-btn" onclick="closeOverview()">✕</button></div>
   <div id="ovBody" class="fs-body"></div>
 </div>
 
@@ -586,6 +590,7 @@ function chgDay(n){const nk=offKey(vk,n);if(nk>todayKey())return;vk=nk;ent=load(
 function jumpTo(k){vk=k;ent=load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
 
 function openOverview(){
+  _selMode=false;_selKeys.clear();updateOvHeader();
   const keys=allKeys().sort().reverse();
   const el=document.getElementById('ovBody');
   if(!keys.length){el.innerHTML=`<div class="ov-empty">No days logged yet.<br>Start tracking today!</div>`;document.getElementById('ovModal').classList.add('open');return;}
@@ -600,7 +605,8 @@ function openOverview(){
       e.happiness!==null?`<div class="ov-stat">😊<span class="sv">${e.happiness}</span><span class="sk">/5</span></div>`:'',
       e.portion!==null  ?`<div class="ov-stat">🍽<span class="sv">${e.portion}</span><span class="sk">/5</span></div>`:'',
     ].filter(Boolean);
-    return`<div class="ov-card" onclick="jumpTo('${k}');closeOverview()">
+    return`<div class="ov-card" data-key="${k}" onclick="onCardClick('${k}')" ontouchstart="lpStart(event,'${k}')" ontouchend="lpEnd()" ontouchmove="lpMove()">
+      <div class="ov-chk">✓</div>
       <div class="ov-top"><div class="ov-date">${isT?'📍 Today':fmtDate(k)}<span style="font-size:.72rem;color:var(--txt-m);font-weight:400;margin-left:6px">${k}</span></div><div style="display:flex;gap:5px">${flags.join('')}</div></div>
       ${meals.length?`<div class="ov-meals">${meals.map(m=>`<div class="ov-meal">${m[0]} <span>${m[1]}</span></div>`).join('')}</div>`:`<div class="ov-meal" style="margin-bottom:10px;font-style:italic">No meals logged</div>`}
       ${stats.length?`<div class="ov-stats">${stats.join('')}</div>`:''}
@@ -608,7 +614,7 @@ function openOverview(){
   }).join('');
   document.getElementById('ovModal').classList.add('open');
 }
-function closeOverview(){document.getElementById('ovModal').classList.remove('open');}
+function closeOverview(){_selMode=false;_selKeys.clear();updateOvHeader();document.getElementById('ovModal').classList.remove('open');}
 
 init();
 
@@ -781,6 +787,76 @@ async function loadSummaryPhotoIcons() {
     }
   },{passive:true});
 })();
+
+// ── ALL DAYS: LONG-PRESS MULTI-SELECT & DELETE ────────────────────────────────
+let _selMode=false,_selKeys=new Set(),_lpTimer=null;
+
+function lpStart(e,k){
+  _lpTimer=setTimeout(()=>{
+    _lpTimer=null;
+    if(navigator.vibrate)navigator.vibrate(50);
+    enterSelMode(k);
+  },500);
+}
+function lpEnd(){if(_lpTimer){clearTimeout(_lpTimer);_lpTimer=null;}}
+function lpMove(){if(_lpTimer){clearTimeout(_lpTimer);_lpTimer=null;}}
+
+function onCardClick(k){
+  if(_selMode){toggleCardSel(k);}
+  else{jumpTo(k);closeOverview();}
+}
+
+function enterSelMode(k){
+  _selMode=true;
+  _selKeys=new Set([k]);
+  updateOvHeader();
+  updateCardVisuals();
+}
+
+function exitSelMode(){
+  _selMode=false;
+  _selKeys.clear();
+  updateOvHeader();
+  updateCardVisuals();
+}
+
+function toggleCardSel(k){
+  if(_selKeys.has(k))_selKeys.delete(k);else _selKeys.add(k);
+  if(_selKeys.size===0){exitSelMode();return;}
+  updateOvHeader();
+  updateCardVisuals();
+}
+
+function updateOvHeader(){
+  const hdr=document.getElementById('ovHdr');
+  if(!hdr)return;
+  if(_selMode){
+    hdr.innerHTML=`<div class="fs-title" style="color:var(--txt)">${_selKeys.size} selected</div><div style="display:flex;gap:8px;align-items:center"><button class="sel-del-btn" onclick="deleteSelected()">🗑️ Delete</button><button class="ico-btn" onclick="exitSelMode()">✕</button></div>`;
+  }else{
+    hdr.innerHTML=`<div class="fs-title">📋 All Days</div><button class="ico-btn" onclick="closeOverview()">✕</button>`;
+  }
+}
+
+function updateCardVisuals(){
+  document.querySelectorAll('.ov-card').forEach(card=>{
+    const k=card.dataset.key;
+    card.classList.toggle('selected',_selMode&&_selKeys.has(k));
+  });
+}
+
+async function deleteSelected(){
+  if(!_selKeys.size)return;
+  const n=_selKeys.size;
+  if(!confirm(`Delete ${n} day${n>1?'s':''}? This cannot be undone.`))return;
+  for(const k of _selKeys){
+    localStorage.removeItem('kt_d_'+k);
+    for(const meal of ['breakfast','lunch','dinner'])deletePhotoBlob(k,meal);
+    if(vk===k){vk=todayKey();ent=load(vk);}
+  }
+  exitSelMode();
+  renderHist();
+  openOverview();
+}
 </script>
 </body>
 </html>
