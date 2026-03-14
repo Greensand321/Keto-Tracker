@@ -385,11 +385,14 @@ const Storage = (() => {
       r.onerror=rej;
     });
   }
-  function _phk(date,meal){return date+'_'+meal;}
+  function _phk(date,meal,idx){return idx==null?date+'_'+meal:date+'_'+meal+'_'+idx;}
   const photos = {
-    save(date,meal,blob)  {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).put(blob,_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));},
-    get(date,meal)        {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readonly');const r=tx.objectStore(_PH_ST).get(_phk(date,meal));r.onsuccess=e=>res(e.target.result||null);r.onerror=rej;}));},
-    delete(date,meal)     {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).delete(_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));}
+    save(date,meal,blob)      {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).put(blob,_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));},
+    get(date,meal)            {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readonly');const r=tx.objectStore(_PH_ST).get(_phk(date,meal));r.onsuccess=e=>res(e.target.result||null);r.onerror=rej;}));},
+    delete(date,meal)         {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).delete(_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));},
+    saveAt(date,meal,idx,blob){return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).put(blob,_phk(date,meal,idx));tx.oncomplete=res;tx.onerror=rej;}));},
+    getAt(date,meal,idx)      {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readonly');const r=tx.objectStore(_PH_ST).get(_phk(date,meal,idx));r.onsuccess=e=>res(e.target.result||null);r.onerror=rej;}));},
+    deleteAt(date,meal,idx)   {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).delete(_phk(date,meal,idx));tx.oncomplete=res;tx.onerror=rej;}));}
   };
 
   async function stats(){
@@ -968,6 +971,45 @@ function savePhotoBlob(date, meal, blob) { return Storage.photos.save(date, meal
 function getPhotoBlob(date, meal)        { return Storage.photos.get(date, meal); }
 function deletePhotoBlob(date, meal)     { return Storage.photos.delete(date, meal); }
 
+const MAX_MEAL_PHOTOS = 5;
+
+// Returns [{idx, blob}] for all photos on a meal.
+// idx===null means the legacy key (date_meal); idx===0,1,… means indexed slots.
+async function getMealPhotos(date, meal) {
+  const out = [];
+  const leg = await Storage.photos.get(date, meal);
+  if (leg) out.push({idx: null, blob: leg});
+  for (let i = 0; i < MAX_MEAL_PHOTOS; i++) {
+    const b = await Storage.photos.getAt(date, meal, i);
+    if (b) out.push({idx: i, blob: b});
+  }
+  return out;
+}
+
+// Save a new photo at the next free indexed slot.
+// Migrates any existing legacy-key photo to index 0 on first multi-photo save.
+async function addMealPhoto(date, meal, blob) {
+  const existing = await getMealPhotos(date, meal);
+  if (existing.length >= MAX_MEAL_PHOTOS) { toast(`Max ${MAX_MEAL_PHOTOS} photos per meal`, true); return false; }
+  const usedIdx = new Set(existing.map(p => p.idx).filter(i => i !== null));
+  const legEntry = existing.find(p => p.idx === null);
+  if (legEntry && !usedIdx.has(0)) {
+    await Storage.photos.saveAt(date, meal, 0, legEntry.blob);
+    await Storage.photos.delete(date, meal);
+    usedIdx.add(0);
+  }
+  let nextIdx = 0;
+  while (usedIdx.has(nextIdx)) nextIdx++;
+  await Storage.photos.saveAt(date, meal, nextIdx, blob);
+  return true;
+}
+
+// Delete all photos for a meal (legacy + every indexed slot).
+async function deleteAllMealPhotos(date, meal) {
+  await Storage.photos.delete(date, meal);
+  for (let i = 0; i < MAX_MEAL_PHOTOS; i++) await Storage.photos.deleteAt(date, meal, i);
+}
+
 // ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
 function compressImage(file, maxPx = 900, quality = 0.75) {
   return new Promise(resolve => {
@@ -1003,16 +1045,9 @@ async function handleCamera(e) {
   if (!file || !_capMeal) return;
   try {
     const blob = await compressImage(file);
-    await savePhotoBlob(vk, _capMeal, blob);
-    loadMealPhoto(_capMeal);
-    toast('Photo saved ✓');
+    const ok = await addMealPhoto(vk, _capMeal, blob);
+    if (ok) { loadMealPhoto(_capMeal); toast('Photo saved ✓'); }
   } catch { toast('Could not save photo', true); }
-}
-
-async function removeMealPhoto(meal) {
-  await deletePhotoBlob(vk, meal);
-  loadMealPhoto(meal);
-  toast('Photo removed');
 }
 
 // ── MEAL STEP PHOTO AREA ──────────────────────────────────────────────────────
@@ -1021,25 +1056,34 @@ const _objURLs = {};
 async function loadMealPhoto(meal) {
   const area = document.getElementById('photo-area');
   if (!area) return;
-  const blob = await getPhotoBlob(vk, meal);
-  if (_objURLs[meal]) { URL.revokeObjectURL(_objURLs[meal]); delete _objURLs[meal]; }
-  if (blob) {
-    const url = URL.createObjectURL(blob);
-    _objURLs[meal] = url;
-    area.innerHTML = `<div class="photo-wrap">
-      <img class="photo-thumb" src="${url}" onclick="openPhotoModal('${meal}')">
-      <button class="photo-del" onclick="removeMealPhoto('${meal}')">✕</button>
-    </div>`;
-  } else {
-    area.innerHTML = `<button class="cam-btn" onclick="openCamera('${meal}')">📷 Add Photo</button>`;
+  if (_objURLs[meal]) {
+    const prev = _objURLs[meal];
+    (Array.isArray(prev) ? prev : [prev]).forEach(u => URL.revokeObjectURL(u));
+    delete _objURLs[meal];
   }
+  const photos = await getMealPhotos(vk, meal);
+  const urls = photos.map(p => URL.createObjectURL(p.blob));
+  _objURLs[meal] = urls;
+  let html = photos.map((p, i) => `<div class="photo-wrap">
+      <img class="photo-thumb" src="${urls[i]}" onclick="openPhotoModal('${meal}',${JSON.stringify(p.idx)})">
+      <button class="photo-del" onclick="removeMealPhotoAt('${meal}',${JSON.stringify(p.idx)})">✕</button>
+    </div>`).join('');
+  html += `<button class="cam-btn" style="margin-top:8px" onclick="openCamera('${meal}')">📷 ${photos.length ? 'Add Another' : 'Add Photo'}</button>`;
+  area.innerHTML = html;
+}
+
+async function removeMealPhotoAt(meal, idx) {
+  if (idx === null) await Storage.photos.delete(vk, meal);
+  else await Storage.photos.deleteAt(vk, meal, idx);
+  loadMealPhoto(meal);
+  toast('Photo removed');
 }
 
 // ── PHOTO MODAL (fullscreen view) ─────────────────────────────────────────────
-async function openPhotoModal(meal) {
-  const blob = await getPhotoBlob(vk, meal);
+async function openPhotoModal(meal, idx) {
+  const blob = idx === null ? await Storage.photos.get(vk, meal) : await Storage.photos.getAt(vk, meal, idx);
   if (!blob) return;
-  if (_objURLs['modal']) { URL.revokeObjectURL(_objURLs['modal']); delete _objURLs['modal']; }
+  if (_objURLs['modal']) { URL.revokeObjectURL(_objURLs['modal']); }
   const url = URL.createObjectURL(blob);
   _objURLs['modal'] = url;
   document.getElementById('photoModalImg').src = url;
@@ -1052,8 +1096,13 @@ async function loadSummaryPhotoIcons() {
   for (const meal of ['breakfast', 'lunch', 'dinner']) {
     const el = document.getElementById('ph-ic-' + meal);
     if (!el) continue;
-    const blob = await getPhotoBlob(vk, meal);
-    el.innerHTML = blob ? ` <span class="photo-ic" onclick="openPhotoModal('${meal}')">📷</span>` : '';
+    const photos = await getMealPhotos(vk, meal);
+    if (photos.length) {
+      const cnt = photos.length > 1 ? ` ${photos.length}` : '';
+      el.innerHTML = ` <span class="photo-ic" onclick="openPhotoModal('${meal}',${JSON.stringify(photos[0].idx)})">📷${cnt}</span>`;
+    } else {
+      el.innerHTML = '';
+    }
   }
 }
 
@@ -1343,7 +1392,7 @@ async function deleteSelected(){
   if(!confirm(`Delete ${n} day${n>1?'s':''}? This cannot be undone.`))return;
   for(const k of _selKeys){
     Storage.day.delete(k);
-    for(const meal of ['breakfast','lunch','dinner'])deletePhotoBlob(k,meal);
+    for(const meal of ['breakfast','lunch','dinner'])deleteAllMealPhotos(k,meal);
     if(vk===k){vk=todayKey();ent=load(vk);}
   }
   exitSelMode();
