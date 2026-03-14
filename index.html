@@ -477,10 +477,13 @@ function handleImport(e){
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
 function openSettings(){renderSettings();document.getElementById('setModal').classList.add('open');}
 function closeSettings(){document.getElementById('setModal').classList.remove('open');}
-function renderSettings(){
+async function renderSettings(){
   const snaps=lsGetSnaps();
   const st=getStorageStats();
-  const barCls=st.pct>=90?'full':st.pct>=65?'warn':'';
+  const ph=await getPhotoStats();
+  const totalKB=st.usedKB+ph.kb;
+  const totalPct=Math.min(100,Math.round(totalKB/st.totalKB*100));
+  const barCls=totalPct>=90?'full':totalPct>=65?'warn':'';
   document.getElementById('setBody').innerHTML=`
     <div class="set-section">
       <div class="set-label">Auto-Save</div>
@@ -491,11 +494,12 @@ function renderSettings(){
       <div class="set-label">Storage</div>
       <div class="storage-box">
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
-          <span style="color:var(--txt)">Browser Local Storage</span>
-          <span style="color:var(--txt-m)">${st.usedKB} KB / ${st.totalKB} KB</span>
+          <span style="color:var(--txt)">Storage Used</span>
+          <span style="color:var(--txt-m)">${totalKB} KB / ${st.totalKB} KB</span>
         </div>
-        <div class="storage-bar-wrap"><div class="storage-bar ${barCls}" style="width:${st.pct}%"></div></div>
-        <div style="font-size:.75rem;color:var(--txt-m)">${allKeys().length} days logged · ${snaps.length} snapshot${snaps.length!==1?'s':''} saved · ${st.pct}% used</div>
+        <div class="storage-bar-wrap"><div class="storage-bar ${barCls}" style="width:${totalPct}%"></div></div>
+        <div style="font-size:.75rem;color:var(--txt-m)">${allKeys().length} days logged · ${snaps.length} snapshot${snaps.length!==1?'s':''} saved · ${ph.count} photo${ph.count!==1?'s':''} · ${totalPct}% used</div>
+        <div style="font-size:.72rem;color:var(--txt-d);margin-top:3px">Text data: ${st.usedKB} KB · Photos: ${ph.kb} KB</div>
       </div>
     </div>
 
@@ -753,6 +757,16 @@ function deletePhotoBlob(date, meal) {
     tx.objectStore(PH_STORE).delete(phKey(date, meal));
     tx.oncomplete = res; tx.onerror = rej;
   }));
+}
+function getPhotoStats() {
+  return openPhDB().then(db => new Promise(res => {
+    const req = db.transaction(PH_STORE, 'readonly').objectStore(PH_STORE).getAll();
+    req.onsuccess = e => {
+      const blobs = e.target.result;
+      res({ count: blobs.length, kb: Math.round(blobs.reduce((s, b) => s + (b ? b.size : 0), 0) / 1024) });
+    };
+    req.onerror = () => res({ count: 0, kb: 0 });
+  })).catch(() => ({ count: 0, kb: 0 }));
 }
 
 // ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
