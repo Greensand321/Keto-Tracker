@@ -544,7 +544,11 @@ function handleImport(e){
 }
 
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
-function openSettings(){renderSettings();document.getElementById('setModal').classList.add('open');}
+function openSettings(){
+  document.querySelector('#setModal .fs-title').innerHTML=`⚙️ Settings <span style="font-size:.72rem;font-weight:400;color:var(--txt-m)">v${APP_VERSION}</span>`;
+  renderSettings();
+  document.getElementById('setModal').classList.add('open');
+}
 function closeSettings(){document.getElementById('setModal').classList.remove('open');}
 async function renderSettings(){
   const snaps=Storage.snaps.get();
@@ -554,11 +558,6 @@ async function renderSettings(){
     <div class="set-section">
       <div class="set-label">Auto-Save</div>
       <div class="set-banner-grn">✅ Auto-save is ON — every change saves instantly.</div>
-    </div>
-
-    <div class="set-section">
-      <div class="set-label">App Version</div>
-      <div class="storage-box" style="font-size:.88rem;color:var(--txt-m)">Version <strong style="color:var(--txt)">${APP_VERSION}</strong></div>
     </div>
 
     <div class="set-section">
