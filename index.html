@@ -92,6 +92,7 @@ textarea::placeholder{color:var(--txt-d)}
 .btn-main{background:var(--accent);color:#fff;flex:1}
 .btn-back{background:var(--surf2);color:var(--txt-m);border:1px solid var(--bd);padding:17px 18px}
 .btn-skip{background:transparent;color:var(--txt-m);border:1px solid var(--bd);flex:1;font-size:.95rem;font-weight:500}
+.btn-keto{background:rgba(245,200,66,.15);color:var(--gold);border:1px solid var(--gold);flex:1;font-size:.95rem;font-weight:600}
 
 .sum-rows{display:flex;flex-direction:column;gap:10px}
 .sum-row{display:flex;align-items:flex-start;gap:11px;background:var(--inp);border-radius:12px;padding:13px 14px}
@@ -122,11 +123,12 @@ textarea::placeholder{color:var(--txt-d)}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
 .cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:.8rem;cursor:pointer;color:var(--txt-m);transition:.12s;-webkit-tap-highlight-color:transparent}
 .cal-day:active:not(.future):not(.other-month){transform:scale(.85)}
-.cal-day.has-data{background:var(--accent);color:#fff;font-weight:600}
-.cal-day.off-keto{background:var(--red)!important;color:#fff;font-weight:600}
+.cal-day.has-data{background:var(--gold);color:#000;font-weight:600}
+.cal-day.keto-meals{background:var(--accent);color:#fff;font-weight:600}
+.cal-day.keto-tested{background:var(--blue);color:#fff;font-weight:600}
 .cal-day.is-today{box-shadow:0 0 0 2px var(--gold)}
 .cal-day.is-viewing{box-shadow:0 0 0 2.5px #fff}
-.cal-day.is-today:not(.has-data):not(.off-keto){color:var(--gold);font-weight:700}
+.cal-day.is-today:not(.has-data):not(.keto-meals):not(.keto-tested){color:var(--gold);font-weight:700}
 .cal-day.future{opacity:.2;pointer-events:none}
 .cal-day.other-month{opacity:.28;cursor:pointer}
 .cal-day.other-month.future{pointer-events:none}
@@ -482,9 +484,9 @@ function lsGetSnaps()  {return Storage.snaps.get();}
 function lsSetSnaps(a) {Storage.snaps.set(a);}
 
 // ── DATA OPS ─────────────────────────────────────────────────────────────────
-function load(k){return Storage.day.get(k)||{date:k,breakfast:'',lunch:'',dinner:'',energy:null,happiness:null,portion:null,notInKeto:false,tested:false,notes:''};}
-function save(k,e){Storage.day.set(k,e);}
-function allKeys(){return Storage.day.allKeys();}
+function load(k){return lsGetDay(k)||{date:k,breakfast:'',lunch:'',dinner:'',energy:null,happiness:null,portion:null,notInKeto:false,tested:false,notes:'',breakfastKeto:false,lunchKeto:false,dinnerKeto:false};}
+function save(k,e){lsSetDay(k,e);}
+function allKeys(){return lsAllDayKeys();}
 
 function saveSnapshot(name){
   const snaps=lsGetSnaps();
@@ -555,6 +557,11 @@ async function renderSettings(){
     </div>
 
     <div class="set-section">
+      <div class="set-label">App Version</div>
+      <div class="storage-box" style="font-size:.88rem;color:var(--txt-m)">Version <strong style="color:var(--txt)">${APP_VERSION}</strong></div>
+    </div>
+
+    <div class="set-section">
       <div class="set-label">Storage</div>
       <div class="storage-box">
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
@@ -614,6 +621,9 @@ function doSaveSnap(){
   if(saveSnapshot(name)){inp.value='';toast('Snapshot saved ✓');renderSettings();}
 }
 
+// ── VERSION ───────────────────────────────────────────────────────────────────
+const APP_VERSION = '1.2';
+
 // ── TRACKER ──────────────────────────────────────────────────────────────────
 const STEPS=['breakfast','lunch','dinner','energy','happiness','portion','flags','notes','summary'];
 const META={
@@ -671,7 +681,7 @@ function renderStep(){
     let inp='';
     if(m.type==='txt'){
       const isMeal=['breakfast','lunch','dinner'].includes(step);
-      inp=`<textarea id="ta" rows="4" placeholder="${PH[step]||''}" oninput="upd('${step}',this.value)">${ent[step]||''}</textarea>${isMeal?'<div id="photo-area"></div>':''}`;
+      inp=`<textarea id="ta" rows="4" placeholder="${PH[step]||''}" oninput="upd('${step}',this.value)">${ent[step]||''}</textarea>`;
     }else if(m.type==='rate'){
       const lbls=step==='portion'?PLBL:RLBL;
       inp=`<div class="r-grid">${[1,2,3,4,5].map(n=>`<button class="r-btn${ent[step]===n?' sel':''}" onclick="selRate('${step}',${n})">${n}<span class="rlbl">${lbls[n]}</span></button>`).join('')}</div>`;
@@ -686,14 +696,16 @@ function renderStep(){
       </div>`;
     }
     const isTxt=m.type==='txt';
+    const isMealStep=['breakfast','lunch','dinner'].includes(step);
     const acts=!isFut
       ?`<div class="actions">
           ${si>0?`<button class="btn btn-back" onclick="back()">‹</button>`:''}
           <button class="btn btn-main" onclick="next()">${si<STEPS.length-2?'Next →':'Finish ✓'}</button>
+          ${isMealStep?`<button class="btn btn-keto" onclick="markKeto('${step}')">🥑 Keto</button>`:''}
           ${isTxt?`<button class="btn btn-skip" onclick="skip()">Skip</button>`:''}
         </div>`
       :`<div class="actions"><button class="btn btn-main" onclick="goToday()">↩ Go to Today</button></div>`;
-    body=`<div class="card"><div><div class="step-lbl">${m.lbl}</div><div class="step-title">${m.ic} ${m.title}</div><div class="step-sub">${m.sub}</div></div>${inp}${acts}</div>`;
+    body=`<div class="card"><div><div class="step-lbl">${m.lbl}</div><div class="step-title">${m.ic} ${m.title}</div><div class="step-sub">${m.sub}</div></div>${inp}${acts}${isMealStep?'<div id="photo-area"></div>':''}</div>`;
   }
   document.getElementById('main').innerHTML=`${step!=='summary'?`<div class="dots">${dots}</div>`:''}${body}`;
   if(['breakfast','lunch','dinner','notes'].includes(step)){const ta=document.getElementById('ta');if(ta)setTimeout(()=>ta.focus(),80);}
@@ -704,9 +716,9 @@ function renderStep(){
 function renderSum(isT,canEdit=isT){
   const e=ent;
   const rows=[
-    {ic:'🍳',k:'Breakfast',v:e.breakfast||null,si:0,meal:'breakfast'},
-    {ic:'🥗',k:'Lunch',    v:e.lunch||null,    si:1,meal:'lunch'},
-    {ic:'🍽️',k:'Dinner',  v:e.dinner||null,   si:2,meal:'dinner'},
+    {ic:'🍳',k:'Breakfast',v:e.breakfast||null,si:0,meal:'breakfast',ketoKey:'breakfastKeto'},
+    {ic:'🥗',k:'Lunch',    v:e.lunch||null,    si:1,meal:'lunch',    ketoKey:'lunchKeto'},
+    {ic:'🍽️',k:'Dinner',  v:e.dinner||null,   si:2,meal:'dinner',   ketoKey:'dinnerKeto'},
     {ic:'⚡',k:'Energy',   v:e.energy   ?`${e.energy}/5 — ${RLBL[e.energy]}`    :null,si:3},
     {ic:'😊',k:'Happiness',v:e.happiness?`${e.happiness}/5 — ${RLBL[e.happiness]}`:null,si:4},
     {ic:'🍽',k:'Portions', v:e.portion  ?`${e.portion}/5 — ${PLBL[e.portion]}`  :null,si:5},
@@ -715,7 +727,7 @@ function renderSum(isT,canEdit=isT){
   const badges=[];
   if(e.notInKeto)badges.push(`<span class="badge b-red">⚠️ Off Keto</span>`);
   if(e.tested)badges.push(`<span class="badge b-grn">🧪 Tested</span>`);
-  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}${r.meal?`<span id="ph-ic-${r.meal}"></span>`:''}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div></div>${canEdit?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
+  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}${r.meal?`<span id="ph-ic-${r.meal}"></span>`:''}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div>${r.ketoKey&&e[r.ketoKey]?`<span class="badge b-grn" style="font-size:.72rem;padding:2px 8px;margin-top:4px;display:inline-block">🥑 Keto</span>`:''}</div>${canEdit?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
   const flagRow=badges.length?`<div class="sum-row"><div class="sum-ic">🚩</div><div class="sum-body"><div class="sum-key">Flags</div><div class="badges">${badges.join('')}</div></div>${canEdit?`<button class="sum-edit" onclick="editAt(6)">✏️</button>`:''}</div>`:'';
   return`<div class="card">
     <div><div class="step-lbl">${fmtDate(vk)}</div><div class="step-title">✅ ${isT?"Today's Log":"Day Summary"}</div></div>
@@ -732,6 +744,7 @@ function next(){if(si<STEPS.length-1){si++;render();}}
 function back(){if(si>0){si--;render();}}
 function skip(){next();}
 function editAt(idx){si=idx;render();}
+function markKeto(meal){ent[meal+'Keto']=true;save(vk,ent);next();}
 function goToday(){vk=todayKey();ent=load(vk);si=defStep(ent);render();}
 function chgDay(n){const nk=offKey(vk,n);if(nk>todayKey())return;vk=nk;ent=load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
 function jumpTo(k){vk=k;ent=load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
@@ -931,12 +944,17 @@ function calNext(){
 function buildCal(){
   const today=todayKey();
   const dataSet=new Set(allKeys());
-  const offKetoSet=new Set();
+  const testedKetoSet=new Set();
+  const ketoMealsSet=new Set();
   const first=new Date(_calYear,_calMonth,1);
   const last=new Date(_calYear,_calMonth+1,0);
   for(let d=new Date(first);d<=last;d.setDate(d.getDate()+1)){
     const k=d.toISOString().slice(0,10);
-    if(dataSet.has(k)&&load(k).notInKeto)offKetoSet.add(k);
+    if(dataSet.has(k)){
+      const entry=load(k);
+      if(entry.tested&&!entry.notInKeto)testedKetoSet.add(k);
+      else if((entry.breakfastKeto?1:0)+(entry.lunchKeto?1:0)+(entry.dinnerKeto?1:0)>=2)ketoMealsSet.add(k);
+    }
   }
   document.getElementById('calTitle').textContent=CAL_MONTHS[_calMonth]+' '+_calYear;
   const startDow=first.getDay();
@@ -961,7 +979,8 @@ function buildCal(){
     const cls=['cal-day'];
     if(k>today){cls.push('future');}
     else{
-      if(offKetoSet.has(k))cls.push('off-keto');
+      if(testedKetoSet.has(k))cls.push('keto-tested');
+      else if(ketoMealsSet.has(k))cls.push('keto-meals');
       else if(dataSet.has(k))cls.push('has-data');
       if(k===today)cls.push('is-today');
       if(k===vk)cls.push('is-viewing');
@@ -981,11 +1000,7 @@ function buildCal(){
   }
 
   document.getElementById('calGrid').innerHTML=cells;
-  const now=new Date();
-  const footer=document.getElementById('calFooter');
-  if(_calYear!==now.getFullYear()||_calMonth!==now.getMonth()){
-    footer.innerHTML=`<button class="cal-today-btn" onclick="calGoToday()">↩ Go to Today</button>`;
-  }else{footer.innerHTML='';}
+  document.getElementById('calFooter').innerHTML='';
 }
 
 function calNavMonth(year,month){_calYear=year;_calMonth=month;buildCal();}

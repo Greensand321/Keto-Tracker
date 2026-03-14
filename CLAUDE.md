@@ -88,13 +88,17 @@ All keys are prefixed to avoid collisions.
   "portion": 3,
   "notInKeto": false,
   "tested": true,
-  "notes": "Had cravings at 3pm"
+  "notes": "Had cravings at 3pm",
+  "breakfastKeto": true,
+  "lunchKeto": false,
+  "dinnerKeto": true
 }
 ```
 
 - Meal fields (`breakfast`, `lunch`, `dinner`, `notes`) are strings (empty string = not filled)
 - Rating fields (`energy`, `happiness`, `portion`) are integers 1–5, or `null` if not set
 - Flag fields (`notInKeto`, `tested`) are booleans
+- Keto meal flags (`breakfastKeto`, `lunchKeto`, `dinnerKeto`) are booleans (default `false`) — set to `true` when the user marks a meal as keto via the Keto button
 
 #### Snapshot Schema (`kt__snapshots`)
 
@@ -160,9 +164,11 @@ The core UI is a 9-step daily logging wizard. Step index `si` controls which ste
 ### Wizard Behaviour Rules
 
 - **Text steps (0, 1, 2, 7)**: Can be skipped; no auto-advance
+- **Meal steps (0, 1, 2)**: Show three action buttons — Next, Keto, Skip. Keto marks the meal's keto flag `true` then advances exactly like Next
 - **Rating steps (3, 4, 5)**: Auto-advance to next step 380ms after selection
 - **Viewing a past day**: Always jumps directly to step 8 (summary, read-only)
 - **Summary for today**: Has inline "Edit" buttons that call `editAt(idx)` to jump back
+- **Photo area**: Rendered below the action buttons on meal steps so buttons remain visible when the keyboard is open
 
 ### Smart Step Logic
 
@@ -210,6 +216,7 @@ The core UI is a 9-step daily logging wizard. Step index `si` controls which ste
 | `back()` | Go to `si - 1` |
 | `skip()` | Skip current step (calls `next()`) |
 | `editAt(idx)` | Jump to a specific step index for editing |
+| `markKeto(meal)` | Sets `ent[meal+'Keto'] = true`, saves, then calls `next()` |
 
 ### Day Navigation
 
@@ -297,10 +304,16 @@ The core UI is a 9-step daily logging wizard. Step index `si` controls which ste
 
 ### Calendar Panel (`.cal-panel`)
 - Month grid with day cells
-- Green cells = has logged data; red = off-keto day; gold outline = today
-- Previous/next month buttons; "Go to Today" footer button
+- Day colour is determined by a 3-tier priority system (highest wins):
+  - **Blue** (`.keto-tested`) — `tested === true` AND `notInKeto === false`
+  - **Green** (`.keto-meals`) — 2 or more of `breakfastKeto`, `lunchKeto`, `dinnerKeto` are `true`
+  - **Yellow** (`.has-data`) — any log entry exists but neither above condition is met
+  - No colour — no log entry for that day
+- Gold outline = today; white outline = currently viewed day
+- Previous/next month navigation buttons only (Go to Today button has been removed)
 
 ### Settings Modal (`#setModal`)
+- App version display (reads from `APP_VERSION` constant)
 - Storage usage bar (KB used / ~5 MB quota)
 - Snapshot creation, list, restore, export, delete
 - Export all / Import JSON buttons
@@ -366,7 +379,7 @@ Strategy: **Cache-first with background update**
 2. On activate: deletes any old cache versions
 3. On fetch: serves from cache immediately; fetches from network in background and updates cache
 
-Cache name: `keto-v2` (increment to force cache bust on next deploy)
+Cache name: `keto-v3` (increment to force cache bust on next deploy — this is the only way to guarantee all devices pick up new app files)
 
 ### iOS-Specific PWA
 
@@ -436,6 +449,22 @@ The importer strips any prefix, validates the date format, and merges after conf
 1. Update the `load()` function's default blank entry to include the new field with a default value
 2. This ensures existing entries without the field get a sensible default on read
 3. Update `renderStep()`, `renderSum()`, and `handleImport()` as needed
+
+### Versioning
+
+The app uses a simple numeric version tracked in two places that **must both be updated** when making meaningful changes:
+
+1. **`APP_VERSION` constant** in `index.html` — displayed in the Settings modal so the user can confirm which version is running
+2. **`CACHE` name** in `sw.js` — controls the service worker cache; incrementing it (e.g. `keto-v3` → `keto-v4`) forces all devices to discard the old cache and download fresh files
+
+**When to increment:**
+- Any user-facing feature addition or change → bump `APP_VERSION` (e.g. `1.2` → `1.3`)
+- Any deploy where you need devices to reliably update → also bump the cache name in `sw.js`
+- Bug fixes or minor tweaks → use judgement; bump if the fix is important enough to force an update
+
+**Format:** `APP_VERSION` uses `major.minor` (e.g. `1.0`, `1.1`, `1.2`). The cache name uses `keto-vN` where N is a simple integer.
+
+> **IMPORTANT for AI assistants:** Always check the current `APP_VERSION` value in `index.html` and the cache name in `sw.js` before finishing a session. If meaningful changes were made, increment both before committing.
 
 ---
 
