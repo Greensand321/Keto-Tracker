@@ -201,6 +201,14 @@ textarea::placeholder{color:var(--txt-d)}
 .set-btn:active{transform:scale(.95)}
 .set-btn-save{background:var(--accent);color:#fff}
 .set-btn-neutral{background:var(--surf2);border:1px solid var(--bd);color:var(--txt);flex:1}
+.upd-pill{background:var(--surf2);border:1px solid var(--bd);color:var(--txt-m);border-radius:20px;padding:3px 9px 3px 9px;font-size:.7rem;cursor:pointer;font-family:inherit;transition:.2s;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;vertical-align:middle;margin-left:5px;line-height:1.4}
+.upd-pill:not(:disabled):active{opacity:.7}
+.upd-pill:disabled{cursor:default}
+.upd-pill.upd-ready{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700;animation:updPulse 2s ease-in-out infinite}
+.upd-pill.upd-ok{border-color:var(--accent);color:var(--accent)}
+@keyframes updPulse{0%,100%{box-shadow:0 0 0 0 rgba(212,175,55,.45)}55%{box-shadow:0 0 0 5px rgba(212,175,55,0)}}
+@keyframes updSpin{to{transform:rotate(360deg)}}
+.upd-spin{display:inline-block;animation:updSpin .75s linear infinite}
 .storage-box{background:var(--inp);border:1px solid var(--bd);border-radius:13px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
 .storage-bar-wrap{background:var(--surf2);border-radius:6px;height:7px;overflow:hidden}
 .storage-bar{height:100%;border-radius:6px;background:var(--accent);transition:.4s}
@@ -637,7 +645,9 @@ function handleImport(e){
 
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
 function openSettings(){
-  document.querySelector('#setModal .fs-title').innerHTML=`⚙️ Settings <span style="font-size:.72rem;font-weight:400;color:var(--txt-m)">v${APP_VERSION}</span>`;
+  document.querySelector('#setModal .fs-title').innerHTML=
+    `⚙️ Settings <button id="updPill" class="upd-pill" onclick="handleUpdPill()"></button>`;
+  setUpdatePill(_updState); // reflect any state that built up while modal was closed
   renderSettings();
   document.getElementById('setModal').classList.add('open');
 }
@@ -884,10 +894,72 @@ applyTheme = function(id, perm=true) {
   if (meta) meta.content = THEME_COLORS[id] || '#060d18';
 };
 
-// Service worker registration
+// ── UPDATE CHECKER ────────────────────────────────────────────────────────────
+async function checkForUpdate(){
+  if(_updState==='checking'||_updState==='ready')return;
+  setUpdatePill('checking');
+  if(!_swReg){setUpdatePill('uptodate');return;}
+  // Track whether updatefound fired so we know if a download is in progress
+  let found=false;
+  const onFound=()=>{found=true;};
+  _swReg.addEventListener('updatefound',onFound,{once:true});
+  try{
+    await _swReg.update();
+  }catch(e){
+    _swReg.removeEventListener('updatefound',onFound);
+    if(_updState==='checking')setUpdatePill('idle');
+    return;
+  }
+  _swReg.removeEventListener('updatefound',onFound);
+  if(found){
+    // New SW is installing; controllerchange will fire and set pill to 'ready'.
+    // Guard against a stall (e.g. network drop mid-download) — reset after 10 s.
+    setTimeout(()=>{if(_updState==='checking')setUpdatePill('idle');},10000);
+  }else if(_updState==='checking'){
+    setUpdatePill('uptodate');
+  }
+}
+
+function setUpdatePill(state){
+  _updState=state;
+  const p=document.getElementById('updPill');
+  if(!p)return;
+  if(state==='idle'){
+    p.innerHTML=`v${APP_VERSION}&nbsp;<span>↻</span>`;
+    p.className='upd-pill';p.disabled=false;
+  }else if(state==='checking'){
+    p.innerHTML=`v${APP_VERSION}&nbsp;<span class="upd-spin">↻</span>`;
+    p.className='upd-pill';p.disabled=true;
+  }else if(state==='uptodate'){
+    p.innerHTML=`v${APP_VERSION}&nbsp;<span>✓</span>`;
+    p.className='upd-pill upd-ok';p.disabled=false;
+    setTimeout(()=>setUpdatePill('idle'),3000);
+  }else if(state==='ready'){
+    p.innerHTML=`v${APP_VERSION}&nbsp;· Restart&nbsp;→`;
+    p.className='upd-pill upd-ready';p.disabled=false;
+  }
+}
+
+function handleUpdPill(){
+  if(_updState==='ready')location.reload();
+  else checkForUpdate();
+}
+
+// Service worker registration — keep reference for manual update checks
+let _swReg = null;
+let _updState = 'idle'; // idle | checking | uptodate | ready
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => {
+        _swReg = reg;
+        // Fires when a new SW activates and takes control mid-session
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          _updState = 'ready';
+          setUpdatePill('ready');
+        });
+      })
+      .catch(() => {});
   });
 }
 
@@ -1110,7 +1182,7 @@ function openCalPicker(){
   const yearsWithData=new Set(allKeys().map(k=>parseInt(k.slice(0,4))));
   const now=new Date();
   const curY=now.getFullYear();
-  const minY=yearsWithData.size?Math.min(...yearsWithData)-1:curY-5;
+  const minY=yearsWithData.size?Math.min(...yearsWithData):curY-5;
   const maxY=curY+5;
 
   // Month wheel HTML
