@@ -285,6 +285,88 @@ textarea::placeholder{color:var(--txt-d)}
 </div>
 
 <script>
+// ── STORAGE MODULE ────────────────────────────────────────────────────────────
+const Storage = (() => {
+  const P  = 'kt_';           // pref/general prefix
+  const PD = 'kt_d_';         // day entry prefix
+  const PS = 'kt__snapshots'; // snapshot key
+
+  const day = {
+    get(k)    { const r=localStorage.getItem(PD+k); return r?JSON.parse(r):null; },
+    set(k,v)  { localStorage.setItem(PD+k, JSON.stringify(v)); },
+    delete(k) { localStorage.removeItem(PD+k); },
+    allKeys() {
+      const a=[];
+      for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith(PD))a.push(k.slice(PD.length));}
+      return a.sort();
+    }
+  };
+
+  const snaps = {
+    get()    { const r=localStorage.getItem(PS); return r?JSON.parse(r):[]; },
+    set(arr) { localStorage.setItem(PS, JSON.stringify(arr)); }
+  };
+
+  const prefs = {
+    get(key)      { return localStorage.getItem(P+key); },
+    set(key, val) { localStorage.setItem(P+key, val); }
+  };
+
+  const _PH_DB='keto-photos', _PH_ST='photos';
+  let _db=null;
+  function _openDB(){
+    if(_db)return Promise.resolve(_db);
+    return new Promise((res,rej)=>{
+      const r=indexedDB.open(_PH_DB,1);
+      r.onupgradeneeded=e=>e.target.result.createObjectStore(_PH_ST);
+      r.onsuccess=e=>{_db=e.target.result;res(_db);};
+      r.onerror=rej;
+    });
+  }
+  function _phk(date,meal){return date+'_'+meal;}
+  const photos = {
+    save(date,meal,blob)  {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).put(blob,_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));},
+    get(date,meal)        {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readonly');const r=tx.objectStore(_PH_ST).get(_phk(date,meal));r.onsuccess=e=>res(e.target.result||null);r.onerror=rej;}));},
+    delete(date,meal)     {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).delete(_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));}
+  };
+
+  async function stats(){
+    // Text: count only kt_ prefixed keys, not foreign app keys
+    let textBytes=0;
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k&&k.startsWith(P))textBytes+=(k.length+(localStorage.getItem(k)||'').length)*2; // UTF-16
+    }
+    const textKB=Math.round(textBytes/1024);
+
+    // Photos: cursor to sum blob sizes without loading blob data into memory
+    let photoBytes=0,photoCount=0;
+    try{
+      const db=await _openDB();
+      await new Promise(res=>{
+        const req=db.transaction(_PH_ST,'readonly').objectStore(_PH_ST).openCursor();
+        req.onsuccess=e=>{
+          const cur=e.target.result;
+          if(!cur){res();return;}
+          if(cur.value){photoBytes+=cur.value.size||0;photoCount++;}
+          cur.continue();
+        };
+        req.onerror=res;
+      });
+    }catch{}
+    const photoKB=Math.round(photoBytes/1024);
+
+    // Quota: use real browser estimate, fall back to 5 MB
+    let quotaKB=5120;
+    try{const est=await navigator.storage.estimate();if(est.quota)quotaKB=Math.round(est.quota/1024);}catch{}
+
+    const totalKB=textKB+photoKB;
+    return{textKB,photoKB,photoCount,totalKB,quotaKB,pct:Math.min(100,Math.round(totalKB/quotaKB*100))};
+  }
+
+  return{day,snaps,prefs,photos,stats};
+})();
+
 // ── THEME ────────────────────────────────────────────────────────────────────
 const THEMES=[
   {id:'midnight',name:'Midnight',emoji:'🌑',dark:true, bg:'#060d18',bar:'#0a1628'},
@@ -304,44 +386,44 @@ const THEMES=[
 ];
 let curTheme='midnight',_prev=null,_rt=null,_autoMode=false;
 function applyTheme(id,perm=true){
-  if(perm&&!_autoMode){curTheme=id;localStorage.setItem('kt_theme',id);}
+  if(perm&&!_autoMode){curTheme=id;Storage.prefs.set('theme',id);}
   document.documentElement.setAttribute('data-theme',id);
   document.querySelectorAll('.tswatch').forEach(el=>el.classList.toggle('active',el.dataset.tid===id));
 }
 function applyAutoTheme(){
   const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const id=isDark?(localStorage.getItem('kt_theme_dark_auto')||'midnight'):(localStorage.getItem('kt_theme_light_auto')||'pearl');
+  const id=isDark?(Storage.prefs.get('theme_dark_auto')||'midnight'):(Storage.prefs.get('theme_light_auto')||'pearl');
   curTheme=id;document.documentElement.setAttribute('data-theme',id);
   document.querySelectorAll('.tswatch').forEach(el=>el.classList.toggle('active',el.dataset.tid===id));
 }
 function toggleAutoTheme(){
   _autoMode=!_autoMode;
-  localStorage.setItem('kt_theme_auto',_autoMode?'on':'off');
+  Storage.prefs.set('theme_auto',_autoMode?'on':'off');
   if(_autoMode){
-    if(!localStorage.getItem('kt_theme_dark_auto'))localStorage.setItem('kt_theme_dark_auto',THEMES.find(t=>t.dark).id);
-    if(!localStorage.getItem('kt_theme_light_auto'))localStorage.setItem('kt_theme_light_auto',THEMES.find(t=>!t.dark).id);
+    if(!Storage.prefs.get('theme_dark_auto'))Storage.prefs.set('theme_dark_auto',THEMES.find(t=>t.dark).id);
+    if(!Storage.prefs.get('theme_light_auto'))Storage.prefs.set('theme_light_auto',THEMES.find(t=>!t.dark).id);
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyAutoTheme);
     applyAutoTheme();
   }else{
     window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change',applyAutoTheme);
-    applyTheme(localStorage.getItem('kt_theme')||'midnight',false);
-    curTheme=localStorage.getItem('kt_theme')||'midnight';
+    applyTheme(Storage.prefs.get('theme')||'midnight',false);
+    curTheme=Storage.prefs.get('theme')||'midnight';
   }
   renderThemeGrid();
 }
 (function(){
-  if(localStorage.getItem('kt_theme_auto')==='on'){
+  if(Storage.prefs.get('theme_auto')==='on'){
     _autoMode=true;
     applyAutoTheme();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyAutoTheme);
   }else{
-    const s=localStorage.getItem('kt_theme')||'midnight';curTheme=s;document.documentElement.setAttribute('data-theme',s);
+    const s=Storage.prefs.get('theme')||'midnight';curTheme=s;document.documentElement.setAttribute('data-theme',s);
   }
 })();
 function renderThemeGrid(){
   const g=document.getElementById('theme-grid');if(!g)return;g.innerHTML='';
-  const autoDark=localStorage.getItem('kt_theme_dark_auto');
-  const autoLight=localStorage.getItem('kt_theme_light_auto');
+  const autoDark=Storage.prefs.get('theme_dark_auto');
+  const autoLight=Storage.prefs.get('theme_light_auto');
   ['Dark','Light'].forEach(lbl=>{
     const isDarkSec=lbl==='Dark';
     const sec=document.createElement('div');sec.className='tp-sec';
@@ -359,8 +441,8 @@ function renderThemeGrid(){
       d.addEventListener('click',e=>{
         e.stopPropagation();clearTimeout(_rt);
         if(_autoMode){
-          const key=isDarkSec?'kt_theme_dark_auto':'kt_theme_light_auto';
-          localStorage.setItem(key,t.id);applyAutoTheme();renderThemeGrid();
+          const key=isDarkSec?'theme_dark_auto':'theme_light_auto';
+          Storage.prefs.set(key,t.id);applyAutoTheme();renderThemeGrid();
         }else{applyTheme(t.id,true);closeThemePanel();}
       });
       g.appendChild(d);
@@ -393,28 +475,13 @@ function toast(msg,err=false){
   el.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>el.classList.remove('show'),2400);
 }
 
-// ── STORAGE: localStorage only, clean & simple ───────────────────────────────
+// ── DATA SHIMS (delegate to Storage module) ───────────────────────────────────
 const MAX_SNAPS=25;
-const KEY_SNAPS='kt__snapshots';
-
-function lsGetDay(k){const r=localStorage.getItem('kt_d_'+k);return r?JSON.parse(r):null;}
-function lsSetDay(k,v){localStorage.setItem('kt_d_'+k,JSON.stringify(v));}
-function lsAllDayKeys(){
-  const a=[];
-  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith('kt_d_'))a.push(k.slice(5));}
-  return a.sort();
-}
-function lsGetSnaps(){const r=localStorage.getItem(KEY_SNAPS);return r?JSON.parse(r):[];}
-function lsSetSnaps(a){localStorage.setItem(KEY_SNAPS,JSON.stringify(a));}
-
-// ── STORAGE SIZE HELPER ───────────────────────────────────────────────────────
-function getStorageStats(){
-  let used=0;
-  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);used+=k.length+(localStorage.getItem(k)||'').length;}
-  const usedKB=Math.round(used*2/1024); // UTF-16 ~2 bytes/char
-  const totalKB=5120; // 5MB typical limit
-  return{usedKB,totalKB,pct:Math.min(100,Math.round(usedKB/totalKB*100))};
-}
+function lsGetDay(k)   {return Storage.day.get(k);}
+function lsSetDay(k,v) {Storage.day.set(k,v);}
+function lsAllDayKeys(){return Storage.day.allKeys();}
+function lsGetSnaps()  {return Storage.snaps.get();}
+function lsSetSnaps(a) {Storage.snaps.set(a);}
 
 // ── DATA OPS ─────────────────────────────────────────────────────────────────
 function load(k){return lsGetDay(k)||{date:k,breakfast:'',lunch:'',dinner:'',energy:null,happiness:null,portion:null,notInKeto:false,tested:false,notes:'',breakfastKeto:false,lunchKeto:false,dinnerKeto:false};}
@@ -431,7 +498,7 @@ function saveSnapshot(name){
 function restoreSnapshot(id){
   const snap=lsGetSnaps().find(s=>s.id===id);if(!snap)return;
   if(!confirm('Restore this snapshot? Your current entries will be replaced.'))return;
-  allKeys().forEach(k=>localStorage.removeItem('kt_d_'+k));
+  allKeys().forEach(k=>Storage.day.delete(k));
   Object.entries(snap.data).forEach(([k,v])=>lsSetDay(k,v));
   vk=todayKey();ent=load(vk);si=defStep(ent);render();
   toast('Snapshot restored ✓');closeSettings();
@@ -521,9 +588,9 @@ function openSettings(){
   document.getElementById('setModal').classList.add('open');
 }
 function closeSettings(){document.getElementById('setModal').classList.remove('open');}
-function renderSettings(){
-  const snaps=lsGetSnaps();
-  const st=getStorageStats();
+async function renderSettings(){
+  const snaps=Storage.snaps.get();
+  const st=await Storage.stats();
   const barCls=st.pct>=90?'full':st.pct>=65?'warn':'';
   document.getElementById('setBody').innerHTML=`
     <div class="set-section">
@@ -535,11 +602,12 @@ function renderSettings(){
       <div class="set-label">Storage</div>
       <div class="storage-box">
         <div style="display:flex;justify-content:space-between;font-size:.82rem">
-          <span style="color:var(--txt)">Browser Local Storage</span>
-          <span style="color:var(--txt-m)">${st.usedKB} KB / ${st.totalKB} KB</span>
+          <span style="color:var(--txt)">Storage Used</span>
+          <span style="color:var(--txt-m)">${st.totalKB} KB / ${st.quotaKB} KB</span>
         </div>
         <div class="storage-bar-wrap"><div class="storage-bar ${barCls}" style="width:${st.pct}%"></div></div>
-        <div style="font-size:.75rem;color:var(--txt-m)">${allKeys().length} days logged · ${snaps.length} snapshot${snaps.length!==1?'s':''} saved · ${st.pct}% used</div>
+        <div style="font-size:.75rem;color:var(--txt-m)">${allKeys().length} days logged · ${snaps.length} snapshot${snaps.length!==1?'s':''} saved · ${st.photoCount} photo${st.photoCount!==1?'s':''} · ${st.pct}% used</div>
+        <div style="font-size:.72rem;color:var(--txt-d);margin-top:3px">Text data: ${st.textKB} KB · Photos: ${st.photoKB} KB</div>
       </div>
     </div>
 
@@ -769,41 +837,10 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// ── PHOTO STORAGE (IndexedDB) ─────────────────────────────────────────────────
-const PH_DB = 'keto-photos', PH_STORE = 'photos';
-let _phDB = null;
-
-function openPhDB() {
-  if (_phDB) return Promise.resolve(_phDB);
-  return new Promise((res, rej) => {
-    const r = indexedDB.open(PH_DB, 1);
-    r.onupgradeneeded = e => e.target.result.createObjectStore(PH_STORE);
-    r.onsuccess = e => { _phDB = e.target.result; res(_phDB); };
-    r.onerror = rej;
-  });
-}
-function phKey(date, meal) { return date + '_' + meal; }
-function savePhotoBlob(date, meal, blob) {
-  return openPhDB().then(db => new Promise((res, rej) => {
-    const tx = db.transaction(PH_STORE, 'readwrite');
-    tx.objectStore(PH_STORE).put(blob, phKey(date, meal));
-    tx.oncomplete = res; tx.onerror = rej;
-  }));
-}
-function getPhotoBlob(date, meal) {
-  return openPhDB().then(db => new Promise((res, rej) => {
-    const tx = db.transaction(PH_STORE, 'readonly');
-    const r = tx.objectStore(PH_STORE).get(phKey(date, meal));
-    r.onsuccess = e => res(e.target.result || null); r.onerror = rej;
-  }));
-}
-function deletePhotoBlob(date, meal) {
-  return openPhDB().then(db => new Promise((res, rej) => {
-    const tx = db.transaction(PH_STORE, 'readwrite');
-    tx.objectStore(PH_STORE).delete(phKey(date, meal));
-    tx.oncomplete = res; tx.onerror = rej;
-  }));
-}
+// ── PHOTO STORAGE (shims → Storage module) ────────────────────────────────────
+function savePhotoBlob(date, meal, blob) { return Storage.photos.save(date, meal, blob); }
+function getPhotoBlob(date, meal)        { return Storage.photos.get(date, meal); }
+function deletePhotoBlob(date, meal)     { return Storage.photos.delete(date, meal); }
 
 // ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
 function compressImage(file, maxPx = 900, quality = 0.75) {
@@ -1070,7 +1107,7 @@ async function deleteSelected(){
   const n=_selKeys.size;
   if(!confirm(`Delete ${n} day${n>1?'s':''}? This cannot be undone.`))return;
   for(const k of _selKeys){
-    localStorage.removeItem('kt_d_'+k);
+    Storage.day.delete(k);
     for(const meal of ['breakfast','lunch','dinner'])deletePhotoBlob(k,meal);
     if(vk===k){vk=todayKey();ent=load(vk);}
   }
