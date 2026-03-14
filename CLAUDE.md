@@ -429,9 +429,14 @@ The importer strips any prefix, validates the date format, then performs a **non
 
 1. Entries are split into **new** (date not in current data) and **duplicates** (date already exists)
 2. First confirm — shows counts of new days and duplicates, asks to proceed
-3. If duplicates exist, a second confirm asks whether to overwrite them or skip them
-4. New entries are always written; duplicates are written only if the user chose to overwrite
-5. Toast reports exactly how many days were imported and how many duplicates were kept
+3. If duplicates exist, two chained dialogs offer three modes:
+   - **Merge (fill gaps)** — field-by-field merge via `mergeEntries()`; imported value only fills a field if the existing value is empty (`""`, `null`, or `false`). Existing values are never touched.
+   - **Overwrite** — entire day entry replaced by imported data
+   - **Skip** — duplicate days ignored entirely, existing data kept
+4. New entries are always written regardless of duplicate mode
+5. Toast reports how many days were written and which mode was applied
+
+`mergeEntries(existing, imported)` is a standalone helper that handles field-level merging. Boolean fields treat `false` as "empty" since `false` is the default value for all boolean fields in this app.
 
 Existing data is never cleared. The worst case is a duplicate entry being overwritten if the user explicitly approves it.
 
