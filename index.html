@@ -584,7 +584,7 @@ function defStep(e){
   return STEPS.indexOf(inc[0]);
 }
 
-function init(){vk=todayKey();ent=load(vk);si=defStep(ent);openPhDB().catch(()=>{});render();}
+function init(){vk=todayKey();ent=load(vk);si=defStep(ent);render();}
 
 function render(){
   const isT=vk===todayKey();
@@ -627,9 +627,7 @@ function renderStep(){
       :`<div class="actions"><button class="btn btn-main" onclick="goToday()">↩ Go to Today</button></div>`;
     body=`<div class="card"><div><div class="step-lbl">${m.lbl}</div><div class="step-title">${m.ic} ${m.title}</div><div class="step-sub">${m.sub}</div></div>${inp}${acts}</div>`;
   }
-  const mainEl=document.getElementById('main');
-  mainEl.innerHTML=`${step!=='summary'?`<div class="dots">${dots}</div>`:''}${body}`;
-  mainEl.scrollTop=0;
+  document.getElementById('main').innerHTML=`${step!=='summary'?`<div class="dots">${dots}</div>`:''}${body}`;
   if(['breakfast','lunch','dinner','notes'].includes(step)){const ta=document.getElementById('ta');if(ta)setTimeout(()=>ta.focus(),80);}
   if(['breakfast','lunch','dinner'].includes(step))loadMealPhoto(step);
   if(step==='summary')loadSummaryPhotoIcons();
@@ -665,7 +663,7 @@ function togFlag(f){ent[f]=!ent[f];save(vk,ent);renderStep();}
 function next(){if(si<STEPS.length-1){si++;render();}}
 function back(){if(si>0){si--;render();}}
 function skip(){next();}
-function editAt(idx){si=idx;ent=load(vk);render();}
+function editAt(idx){si=idx;render();}
 function goToday(){vk=todayKey();ent=load(vk);si=defStep(ent);render();}
 function chgDay(n){const nk=offKey(vk,n);if(nk>todayKey())return;vk=nk;ent=load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
 function jumpTo(k){vk=k;ent=load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
@@ -810,10 +808,7 @@ const _objURLs = {};
 async function loadMealPhoto(meal) {
   const area = document.getElementById('photo-area');
   if (!area) return;
-  let blob = null;
-  try { blob = await getPhotoBlob(vk, meal); } catch(e) {}
-  // Bail if the DOM was replaced while we were waiting (user navigated away)
-  if (document.getElementById('photo-area') !== area) return;
+  const blob = await getPhotoBlob(vk, meal);
   if (_objURLs[meal]) { URL.revokeObjectURL(_objURLs[meal]); delete _objURLs[meal]; }
   if (blob) {
     const url = URL.createObjectURL(blob);
@@ -901,13 +896,14 @@ function buildCal(){
   const dataSet=new Set(allKeys());
   const offKetoSet=new Set();
   const first=new Date(_calYear,_calMonth,1);
-  const daysInMonth=new Date(_calYear,_calMonth+1,0).getDate();
-  for(let day=1;day<=daysInMonth;day++){
-    const k=`${_calYear}-${String(_calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    try{if(dataSet.has(k)&&load(k).notInKeto)offKetoSet.add(k);}catch(e){}
+  const last=new Date(_calYear,_calMonth+1,0);
+  for(let d=new Date(first);d<=last;d.setDate(d.getDate()+1)){
+    const k=d.toISOString().slice(0,10);
+    if(dataSet.has(k)&&load(k).notInKeto)offKetoSet.add(k);
   }
   document.getElementById('calTitle').textContent=CAL_MONTHS[_calMonth]+' '+_calYear;
   const startDow=first.getDay();
+  const daysInMonth=last.getDate();
   const TOTAL=42;
   let cells='';
 
