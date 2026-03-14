@@ -584,7 +584,7 @@ function defStep(e){
   return STEPS.indexOf(inc[0]);
 }
 
-function init(){vk=todayKey();ent=load(vk);si=defStep(ent);render();}
+function init(){vk=todayKey();ent=load(vk);si=defStep(ent);openPhDB().catch(()=>{});render();}
 
 function render(){
   const isT=vk===todayKey();
@@ -627,7 +627,11 @@ function renderStep(){
       :`<div class="actions"><button class="btn btn-main" onclick="goToday()">↩ Go to Today</button></div>`;
     body=`<div class="card"><div><div class="step-lbl">${m.lbl}</div><div class="step-title">${m.ic} ${m.title}</div><div class="step-sub">${m.sub}</div></div>${inp}${acts}</div>`;
   }
-  document.getElementById('main').innerHTML=`${step!=='summary'?`<div class="dots">${dots}</div>`:''}${body}`;
+  const mainEl=document.getElementById('main');
+  mainEl.style.transition='none';
+  mainEl.innerHTML=`${step!=='summary'?`<div class="dots">${dots}</div>`:''}${body}`;
+  mainEl.scrollTop=0;
+  requestAnimationFrame(()=>mainEl.style.transition='');
   if(['breakfast','lunch','dinner','notes'].includes(step)){const ta=document.getElementById('ta');if(ta)setTimeout(()=>ta.focus(),80);}
   if(['breakfast','lunch','dinner'].includes(step))loadMealPhoto(step);
   if(step==='summary')loadSummaryPhotoIcons();
@@ -663,7 +667,7 @@ function togFlag(f){ent[f]=!ent[f];save(vk,ent);renderStep();}
 function next(){if(si<STEPS.length-1){si++;render();}}
 function back(){if(si>0){si--;render();}}
 function skip(){next();}
-function editAt(idx){si=idx;render();}
+function editAt(idx){si=idx;ent=load(vk);render();}
 function goToday(){vk=todayKey();ent=load(vk);si=defStep(ent);render();}
 function chgDay(n){const nk=offKey(vk,n);if(nk>todayKey())return;vk=nk;ent=load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
 function jumpTo(k){vk=k;ent=load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
@@ -808,7 +812,10 @@ const _objURLs = {};
 async function loadMealPhoto(meal) {
   const area = document.getElementById('photo-area');
   if (!area) return;
-  const blob = await getPhotoBlob(vk, meal);
+  let blob = null;
+  try { blob = await getPhotoBlob(vk, meal); } catch(e) {}
+  // Bail if the DOM was replaced while we were waiting (user navigated away)
+  if (document.getElementById('photo-area') !== area) return;
   if (_objURLs[meal]) { URL.revokeObjectURL(_objURLs[meal]); delete _objURLs[meal]; }
   if (blob) {
     const url = URL.createObjectURL(blob);
