@@ -139,24 +139,27 @@ textarea::placeholder{color:var(--txt-d)}
 .cal-month-lbl:active{opacity:.75}
 #calPicker{display:none;position:absolute;inset:0;background:var(--bg);border-radius:20px;z-index:5;flex-direction:column;padding:14px 14px 12px;box-sizing:border-box}
 #calPicker.open{display:flex}
-.cpkr-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.cpkr-title{font-size:.82rem;color:var(--txt-m);font-weight:600}
-.cpkr-close{background:none;border:none;color:var(--txt-m);font-size:1.1rem;cursor:pointer;padding:2px 6px;font-family:inherit;line-height:1;border-radius:6px}
+.cpkr-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.cpkr-close{background:none;border:none;color:var(--txt-m);font-size:1.1rem;cursor:pointer;padding:4px 8px;font-family:inherit;line-height:1;border-radius:6px}
 .cpkr-close:active{background:var(--surf2)}
-.cpkr-today{background:none;border:1px solid var(--bd);color:var(--txt-m);border-radius:8px;padding:4px 12px;font-size:.75rem;cursor:pointer;font-family:inherit;transition:.15s}
-.cpkr-today:active{background:var(--surf2)}
-.cpkr-wheels{display:flex;gap:0;flex:1;align-items:stretch}
+.cpkr-label{font-size:1rem;font-weight:700;color:var(--gold);flex:1;text-align:center;pointer-events:none}
+.cpkr-go{background:var(--accent);border:none;color:#fff;border-radius:8px;padding:5px 14px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s}
+.cpkr-go:active{opacity:.8}
+.cpkr-wheels{display:flex;gap:0;height:200px}
 .cpkr-col{flex:1;display:flex;flex-direction:column;align-items:center}
-.cpkr-col-lbl{font-size:.6rem;font-weight:700;color:var(--txt-d);margin-bottom:6px;text-transform:uppercase;letter-spacing:.07em}
-.cpkr-wrap{position:relative;width:100%;flex:1}
-.cpkr-wheel{height:200px;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.cpkr-col-lbl{font-size:.6rem;font-weight:700;color:var(--txt-d);margin-bottom:6px;text-transform:uppercase;letter-spacing:.07em;flex-shrink:0}
+.cpkr-wrap{position:relative;width:100%;flex:1;overflow:hidden}
+.cpkr-wheel{position:absolute;inset:0;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .cpkr-wheel::-webkit-scrollbar{display:none}
-.cpkr-pad{height:80px;flex-shrink:0}
-.cpkr-item{height:40px;display:flex;align-items:center;justify-content:center;font-size:.95rem;color:var(--txt);scroll-snap-align:center}
-.cpkr-item.no-data{color:var(--txt-d);opacity:.4}
-.cpkr-band{position:absolute;top:50%;transform:translateY(-50%);left:6px;right:6px;height:40px;background:var(--surf2);border-radius:8px;pointer-events:none;z-index:0}
-.cpkr-fade{position:absolute;inset:0;background:linear-gradient(to bottom,var(--bg) 0%,transparent 32%,transparent 68%,var(--bg) 100%);pointer-events:none;z-index:1}
-.cpkr-divider{width:1px;background:var(--bd);margin:24px 6px 0;flex-shrink:0}
+.cpkr-pad{height:80px}
+.cpkr-item{height:40px;display:flex;align-items:center;justify-content:center;font-size:1rem;color:var(--txt);scroll-snap-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cpkr-item.no-data{color:var(--txt-d);opacity:.38}
+.cpkr-band{position:absolute;top:50%;transform:translateY(-50%);left:4px;right:4px;height:40px;background:var(--surf2);border-radius:8px;pointer-events:none;z-index:1}
+.cpkr-fade{position:absolute;inset:0;background:linear-gradient(to bottom,var(--bg) 0%,transparent 30%,transparent 70%,var(--bg) 100%);pointer-events:none;z-index:2}
+.cpkr-divider{width:1px;background:var(--bd);margin:0 4px;flex-shrink:0;align-self:stretch}
+.cpkr-footer{text-align:center;margin-top:14px}
+.cpkr-today{background:none;border:1px solid var(--bd);color:var(--txt-m);border-radius:8px;padding:5px 20px;font-size:.78rem;cursor:pointer;font-family:inherit;transition:.15s}
+.cpkr-today:active{background:var(--surf2)}
 .auto-tog{grid-column:span 2;background:var(--surf2);border:2px solid var(--bd);border-radius:10px;cursor:pointer;padding:7px 4px;text-align:center;font-size:9.5px;font-weight:700;color:var(--txt-m);transition:.15s;line-height:1.4}
 .auto-tog:active{transform:scale(.97)}.auto-tog.active{border-color:var(--accent);color:var(--accent);background:rgba(92,184,92,.1)}
 .tswatch.auto-dark-sel{border-color:#7dd3fc!important;box-shadow:0 0 0 1px rgba(125,211,252,.4)!important}
@@ -270,8 +273,8 @@ textarea::placeholder{color:var(--txt-d)}
   <div id="calPicker">
     <div class="cpkr-hdr">
       <button class="cpkr-close" onclick="closeCalPicker()">✕</button>
-      <span class="cpkr-title">Jump to</span>
-      <button class="cpkr-today" onclick="pickerGoToday()">Go to Today</button>
+      <span id="cpkrLabel" class="cpkr-label"></span>
+      <button class="cpkr-go" onclick="applyCalPicker()">Go →</button>
     </div>
     <div class="cpkr-wheels">
       <div class="cpkr-col">
@@ -291,6 +294,9 @@ textarea::placeholder{color:var(--txt-d)}
           <div class="cpkr-fade"></div>
         </div>
       </div>
+    </div>
+    <div class="cpkr-footer">
+      <button class="cpkr-today" onclick="pickerGoToday()">Go to Today</button>
     </div>
   </div>
 </div>
@@ -1095,8 +1101,10 @@ function calSelect(k){jumpTo(k);closeCal();}
 function calGoToday(){const n=new Date();_calYear=n.getFullYear();_calMonth=n.getMonth();buildCal();}
 
 // ── CALENDAR MONTH/YEAR PICKER ────────────────────────────────────────────────
-const CPKR_IH=40; // item height px
-let _cpkrTimers={};
+const CPKR_IH=40; // item height in px — must match .cpkr-item height
+const CPKR_PAD=80; // top/bottom padding — must be 2 * CPKR_IH
+let _cpkrM=0,_cpkrY=0; // picker's in-progress selection
+let _cpkrTimers={},_cpkrBusy=false; // busy flag prevents scroll→snap→scroll loops
 
 function openCalPicker(){
   const yearsWithData=new Set(allKeys().map(k=>parseInt(k.slice(0,4))));
@@ -1105,17 +1113,16 @@ function openCalPicker(){
   const minY=yearsWithData.size?Math.min(...yearsWithData)-1:curY-5;
   const maxY=curY+5;
 
-  // Month wheel
+  // Month wheel HTML
   let mHTML='<div class="cpkr-pad"></div>';
-  CAL_MONTHS.forEach((m,i)=>{mHTML+=`<div class="cpkr-item" data-val="${i}">${m}</div>`;});
+  CAL_MONTHS.forEach((m,i)=>{mHTML+=`<div class="cpkr-item" data-val="${i}" onclick="cpkrTap(this,'month')">${m}</div>`;});
   mHTML+='<div class="cpkr-pad"></div>';
 
-  // Year wheel
+  // Year wheel HTML
   let yHTML='<div class="cpkr-pad"></div>';
   const years=[];
   for(let y=minY;y<=maxY;y++){
-    const hasData=yearsWithData.has(y);
-    yHTML+=`<div class="cpkr-item${hasData?'':' no-data'}" data-val="${y}">${y}</div>`;
+    yHTML+=`<div class="cpkr-item${yearsWithData.has(y)?'':' no-data'}" data-val="${y}" onclick="cpkrTap(this,'year')">${y}</div>`;
     years.push(y);
   }
   yHTML+='<div class="cpkr-pad"></div>';
@@ -1125,9 +1132,22 @@ function openCalPicker(){
   mw.innerHTML=mHTML;
   yw.innerHTML=yHTML;
 
-  // Scroll to current selection (instant, no animation)
-  mw.scrollTop=_calMonth*CPKR_IH;
-  yw.scrollTop=years.indexOf(_calYear)*CPKR_IH;
+  // Seed picker state from current calendar view
+  _cpkrM=_calMonth;
+  _cpkrY=_calYear;
+  updateCpkrLabel();
+
+  // scrollTop must be set AFTER the browser has laid out the new HTML.
+  // Two rAF frames guarantee a full layout pass has occurred.
+  const mTarget=_calMonth*CPKR_IH;
+  const yTarget=Math.max(0,years.indexOf(_calYear))*CPKR_IH;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    _cpkrBusy=true;
+    mw.scrollTop=mTarget;
+    yw.scrollTop=yTarget;
+    // Release busy flag after scroll settles
+    setTimeout(()=>{_cpkrBusy=false;},80);
+  }));
 
   document.getElementById('calPicker').classList.add('open');
 }
@@ -1136,17 +1156,50 @@ function closeCalPicker(){
   document.getElementById('calPicker').classList.remove('open');
 }
 
+// Called when user taps directly on a wheel item
+function cpkrTap(el,type){
+  const val=parseInt(el.dataset.val);
+  const wheel=el.closest('.cpkr-wheel');
+  const items=[...wheel.querySelectorAll('.cpkr-item')];
+  const idx=items.indexOf(el);
+  _cpkrBusy=true;
+  wheel.scrollTo({top:idx*CPKR_IH,behavior:'smooth'});
+  setTimeout(()=>{_cpkrBusy=false;},350);
+  if(type==='month')_cpkrM=val; else _cpkrY=val;
+  updateCpkrLabel();
+}
+
 function onCpkrScroll(el,type){
+  if(_cpkrBusy)return;
   clearTimeout(_cpkrTimers[type]);
   _cpkrTimers[type]=setTimeout(()=>{
-    const idx=Math.round(el.scrollTop/CPKR_IH);
+    // Snap to the nearest item
+    const rawIdx=el.scrollTop/CPKR_IH;
+    const idx=Math.round(rawIdx);
     const items=el.querySelectorAll('.cpkr-item');
     if(!items[idx])return;
     const val=parseInt(items[idx].dataset.val);
-    if(type==='month')_calMonth=val;
-    else _calYear=val;
-    buildCal();
-  },160);
+    if(type==='month')_cpkrM=val; else _cpkrY=val;
+    updateCpkrLabel();
+    // Force exact snap position if the wheel didn't land perfectly
+    const exactTop=idx*CPKR_IH;
+    if(Math.abs(el.scrollTop-exactTop)>0.5){
+      _cpkrBusy=true;
+      el.scrollTo({top:exactTop,behavior:'smooth'});
+      setTimeout(()=>{_cpkrBusy=false;},350);
+    }
+  },250);
+}
+
+function updateCpkrLabel(){
+  document.getElementById('cpkrLabel').textContent=CAL_MONTHS[_cpkrM]+' '+_cpkrY;
+}
+
+function applyCalPicker(){
+  _calMonth=_cpkrM;
+  _calYear=_cpkrY;
+  closeCalPicker();
+  buildCal();
 }
 
 function pickerGoToday(){
