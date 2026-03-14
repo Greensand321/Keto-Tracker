@@ -45,7 +45,8 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSys
 .hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--bd);flex-shrink:0;order:3;background:var(--bg)}
 .hdr-title{font-size:.95rem;font-weight:700;color:var(--gold)}
 .hdr-nav{display:flex;align-items:center;gap:6px}
-.hdr-date{font-size:.78rem;color:var(--txt-m);min-width:68px;text-align:center}
+.hdr-date{font-size:.78rem;color:var(--txt);min-width:68px;text-align:center;background:var(--surf2);border:1px solid var(--bd);border-radius:9px;padding:5px 12px;cursor:pointer;font-family:inherit;transition:.15s}
+.hdr-date:active{transform:scale(.95)}
 .ico-btn{background:var(--surf2);border:1px solid var(--bd);color:var(--txt);width:34px;height:34px;border-radius:9px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:.15s;flex-shrink:0}
 .ico-btn:disabled{opacity:.3;cursor:default}
 .ico-btn:not(:disabled):active{transform:scale(.93)}
@@ -108,11 +109,29 @@ textarea::placeholder{color:var(--txt-d)}
 .done-banner{text-align:center;padding:10px 14px;background:rgba(92,184,92,.1);border-radius:10px;font-size:.88rem;color:var(--accent);font-weight:600}
 .edit-all-btn{background:var(--surf2);border:1px solid var(--bd);color:var(--txt-m);border-radius:11px;padding:13px;font-size:.9rem;cursor:pointer;width:100%;font-family:inherit;font-weight:500;margin-top:2px}
 
-.hist{display:flex;gap:8px;overflow-x:auto;padding:10px 18px;border-top:1px solid var(--bd);flex-shrink:0;scrollbar-width:none;order:2}
-.hist::-webkit-scrollbar{display:none}
-.chip{flex-shrink:0;padding:7px 13px;border-radius:20px;font-size:.78rem;background:var(--surf2);border:1px solid var(--bd);cursor:pointer;color:var(--txt-m);white-space:nowrap}
-.chip.td{border-color:var(--accent);color:var(--accent)}
-.chip.vw{background:var(--accent);color:#fff;border-color:var(--accent)}
+#calBackdrop{display:none;position:fixed;inset:0;z-index:89;background:rgba(0,0,0,.45)}
+#calBackdrop.open{display:block}
+#calPanel{display:none;position:fixed;bottom:62px;left:12px;right:12px;background:var(--bg);border:1px solid var(--bd-i);border-radius:20px;z-index:90;padding:16px 14px;box-shadow:0 -8px 40px rgba(0,0,0,.65)}
+#calPanel.open{display:block}
+.cal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-month-lbl{font-size:1rem;font-weight:700;color:var(--gold)}
+.cal-nav{background:var(--surf2);border:1px solid var(--bd);color:var(--txt);width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;transition:.15s}
+.cal-nav:active{transform:scale(.9)}
+.cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px}
+.cal-dow{text-align:center;font-size:.6rem;font-weight:700;color:var(--txt-d);padding:2px 0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:.8rem;cursor:pointer;color:var(--txt-m);transition:.12s;-webkit-tap-highlight-color:transparent}
+.cal-day:active:not(.future):not(.other-month){transform:scale(.85)}
+.cal-day.has-data{background:var(--accent);color:#fff;font-weight:600}
+.cal-day.off-keto{background:var(--red)!important;color:#fff;font-weight:600}
+.cal-day.is-today{box-shadow:0 0 0 2px var(--gold)}
+.cal-day.is-viewing{box-shadow:0 0 0 2.5px #fff}
+.cal-day.is-today:not(.has-data):not(.off-keto){color:var(--gold);font-weight:700}
+.cal-day.future{opacity:.2;pointer-events:none}
+.cal-day.other-month{opacity:.12;pointer-events:none}
+.cal-footer{text-align:center;margin-top:10px}
+.cal-today-btn{background:none;border:1px solid var(--bd);color:var(--txt-m);border-radius:8px;padding:5px 16px;font-size:.78rem;cursor:pointer;font-family:inherit;transition:.15s}
+.cal-today-btn:active{background:var(--surf2)}
 
 .fs-modal{display:none;position:fixed;inset:0;background:var(--bg);z-index:100;flex-direction:column}
 .fs-modal.open{display:flex}
@@ -206,12 +225,25 @@ textarea::placeholder{color:var(--txt-d)}
 <body>
 
 <div class="main" id="main"></div>
-<div class="hist" id="hist"></div>
+<div id="calBackdrop" onclick="closeCal()"></div>
+<div id="calPanel">
+  <div class="cal-hdr">
+    <button class="cal-nav" onclick="calPrev()">‹</button>
+    <div class="cal-month-lbl" id="calTitle"></div>
+    <button class="cal-nav" onclick="calNext()">›</button>
+  </div>
+  <div class="cal-dow-row">
+    <div class="cal-dow">Su</div><div class="cal-dow">Mo</div><div class="cal-dow">Tu</div>
+    <div class="cal-dow">We</div><div class="cal-dow">Th</div><div class="cal-dow">Fr</div><div class="cal-dow">Sa</div>
+  </div>
+  <div class="cal-grid" id="calGrid"></div>
+  <div id="calFooter" class="cal-footer"></div>
+</div>
 <div class="hdr">
   <div class="hdr-title">🥑 Keto Tracker</div>
   <div class="hdr-nav">
     <button class="ico-btn" id="prevBtn" onclick="chgDay(-1)">‹</button>
-    <div class="hdr-date" id="hdrDate">Today</div>
+    <button class="hdr-date" id="hdrDate" onclick="openCal()">Today</button>
     <button class="ico-btn" id="nextBtn" onclick="chgDay(1)" disabled>›</button>
     <button class="ico-btn" onclick="openOverview()">📋</button>
     <button class="ico-btn" id="theme-btn" onclick="toggleThemePanel()">🎨</button>
@@ -502,18 +534,9 @@ function render(){
   const isT=vk===todayKey();
   document.getElementById('hdrDate').textContent=isT?'Today':fmtDate(vk);
   document.getElementById('nextBtn').disabled=isT;
-  renderHist();renderStep();
+  renderStep();
 }
 
-function renderHist(){
-  let keys=allKeys();const t=todayKey();
-  if(!keys.includes(t))keys.push(t);
-  keys=[...new Set(keys)].sort().reverse().slice(0,20);
-  document.getElementById('hist').innerHTML=keys.map(k=>{
-    const c='chip'+(k===t?' td':'')+(k===vk?' vw':'');
-    return`<div class="${c}" onclick="jumpTo('${k}')">${k===t?'Today':fmtDate(k)}</div>`;
-  }).join('');
-}
 
 function renderStep(){
   const step=STEPS[si],m=META[step],isT=vk===todayKey();
@@ -787,6 +810,70 @@ async function loadSummaryPhotoIcons() {
     }
   },{passive:true});
 })();
+
+// ── CALENDAR ──────────────────────────────────────────────────────────────────
+const CAL_MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+let _calYear, _calMonth;
+
+function openCal(){
+  const d=new Date(vk+'T12:00:00');
+  _calYear=d.getFullYear();_calMonth=d.getMonth();
+  buildCal();
+  document.getElementById('calPanel').classList.add('open');
+  document.getElementById('calBackdrop').classList.add('open');
+}
+
+function closeCal(){
+  document.getElementById('calPanel').classList.remove('open');
+  document.getElementById('calBackdrop').classList.remove('open');
+}
+
+function calPrev(){if(--_calMonth<0){_calMonth=11;_calYear--;}buildCal();}
+function calNext(){
+  const now=new Date();
+  if(_calYear>now.getFullYear()||(_calYear===now.getFullYear()&&_calMonth>=now.getMonth()))return;
+  if(++_calMonth>11){_calMonth=0;_calYear++;}buildCal();
+}
+
+function buildCal(){
+  const today=todayKey();
+  const dataSet=new Set(allKeys());
+  const offKetoSet=new Set();
+  const first=new Date(_calYear,_calMonth,1);
+  const last=new Date(_calYear,_calMonth+1,0);
+  for(let d=new Date(first);d<=last;d.setDate(d.getDate()+1)){
+    const k=d.toISOString().slice(0,10);
+    if(dataSet.has(k)&&load(k).notInKeto)offKetoSet.add(k);
+  }
+  document.getElementById('calTitle').textContent=CAL_MONTHS[_calMonth]+' '+_calYear;
+  const startDow=first.getDay();
+  const daysInMonth=last.getDate();
+  let cells='';
+  for(let i=0;i<startDow;i++)cells+=`<div class="cal-day other-month"></div>`;
+  for(let day=1;day<=daysInMonth;day++){
+    const k=`${_calYear}-${String(_calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const cls=['cal-day'];
+    if(k>today){cls.push('future');}
+    else{
+      if(offKetoSet.has(k))cls.push('off-keto');
+      else if(dataSet.has(k))cls.push('has-data');
+      if(k===today)cls.push('is-today');
+      if(k===vk)cls.push('is-viewing');
+    }
+    const isFuture=cls.includes('future');
+    cells+=`<div class="${cls.join(' ')}"${!isFuture?` onclick="calSelect('${k}')"`:''} title="${k}">${day}</div>`;
+  }
+  document.getElementById('calGrid').innerHTML=cells;
+  const now=new Date();
+  const footer=document.getElementById('calFooter');
+  if(_calYear!==now.getFullYear()||_calMonth!==now.getMonth()){
+    footer.innerHTML=`<button class="cal-today-btn" onclick="calGoToday()">↩ Go to Today</button>`;
+  }else{footer.innerHTML='';}
+}
+
+function calSelect(k){jumpTo(k);closeCal();}
+
+function calGoToday(){const n=new Date();_calYear=n.getFullYear();_calMonth=n.getMonth();buildCal();}
 
 // ── ALL DAYS: LONG-PRESS MULTI-SELECT & DELETE ────────────────────────────────
 let _selMode=false,_selKeys=new Set(),_lpTimer=null;
