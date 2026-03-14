@@ -1110,7 +1110,7 @@ function openCalPicker(){
   const yearsWithData=new Set(allKeys().map(k=>parseInt(k.slice(0,4))));
   const now=new Date();
   const curY=now.getFullYear();
-  const minY=yearsWithData.size?Math.min(...yearsWithData)-1:curY-5;
+  const minY=yearsWithData.size?Math.min(...yearsWithData):curY-5;
   const maxY=curY+5;
 
   // Month wheel HTML
