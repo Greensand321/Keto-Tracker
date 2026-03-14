@@ -128,10 +128,15 @@ textarea::placeholder{color:var(--txt-d)}
 .cal-day.is-viewing{box-shadow:0 0 0 2.5px #fff}
 .cal-day.is-today:not(.has-data):not(.off-keto){color:var(--gold);font-weight:700}
 .cal-day.future{opacity:.2;pointer-events:none}
-.cal-day.other-month{opacity:.12;pointer-events:none}
+.cal-day.other-month{opacity:.28;cursor:pointer}
+.cal-day.other-month.future{pointer-events:none}
 .cal-footer{text-align:center;margin-top:10px}
 .cal-today-btn{background:none;border:1px solid var(--bd);color:var(--txt-m);border-radius:8px;padding:5px 16px;font-size:.78rem;cursor:pointer;font-family:inherit;transition:.15s}
 .cal-today-btn:active{background:var(--surf2)}
+.auto-tog{grid-column:span 2;background:var(--surf2);border:2px solid var(--bd);border-radius:10px;cursor:pointer;padding:7px 4px;text-align:center;font-size:9.5px;font-weight:700;color:var(--txt-m);transition:.15s;line-height:1.4}
+.auto-tog:active{transform:scale(.97)}.auto-tog.active{border-color:var(--accent);color:var(--accent);background:rgba(92,184,92,.1)}
+.tswatch.auto-dark-sel{border-color:#7dd3fc!important;box-shadow:0 0 0 1px rgba(125,211,252,.4)!important}
+.tswatch.auto-light-sel{border-color:#fde68a!important;box-shadow:0 0 0 1px rgba(253,230,138,.4)!important}
 
 .fs-modal{display:none;position:fixed;inset:0;background:var(--bg);z-index:100;flex-direction:column}
 .fs-modal.open{display:flex}
@@ -295,26 +300,77 @@ const THEMES=[
   {id:'lavender',name:'Lavender',emoji:'💜',dark:false,bg:'#f5f3ff',bar:'#ddd6fe'},
   {id:'sunset',  name:'Sunset',  emoji:'🌅',dark:false,bg:'#fff7ed',bar:'#fed7aa'},
 ];
-let curTheme='midnight',_prev=null,_rt=null;
+let curTheme='midnight',_prev=null,_rt=null,_autoMode=false;
 function applyTheme(id,perm=true){
-  if(perm){curTheme=id;localStorage.setItem('kt_theme',id);}
+  if(perm&&!_autoMode){curTheme=id;localStorage.setItem('kt_theme',id);}
   document.documentElement.setAttribute('data-theme',id);
   document.querySelectorAll('.tswatch').forEach(el=>el.classList.toggle('active',el.dataset.tid===id));
 }
-(function(){const s=localStorage.getItem('kt_theme')||'midnight';curTheme=s;document.documentElement.setAttribute('data-theme',s);})();
+function applyAutoTheme(){
+  const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const id=isDark?(localStorage.getItem('kt_theme_dark_auto')||'midnight'):(localStorage.getItem('kt_theme_light_auto')||'pearl');
+  curTheme=id;document.documentElement.setAttribute('data-theme',id);
+  document.querySelectorAll('.tswatch').forEach(el=>el.classList.toggle('active',el.dataset.tid===id));
+}
+function toggleAutoTheme(){
+  _autoMode=!_autoMode;
+  localStorage.setItem('kt_theme_auto',_autoMode?'on':'off');
+  if(_autoMode){
+    if(!localStorage.getItem('kt_theme_dark_auto'))localStorage.setItem('kt_theme_dark_auto',THEMES.find(t=>t.dark).id);
+    if(!localStorage.getItem('kt_theme_light_auto'))localStorage.setItem('kt_theme_light_auto',THEMES.find(t=>!t.dark).id);
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyAutoTheme);
+    applyAutoTheme();
+  }else{
+    window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change',applyAutoTheme);
+    applyTheme(localStorage.getItem('kt_theme')||'midnight',false);
+    curTheme=localStorage.getItem('kt_theme')||'midnight';
+  }
+  renderThemeGrid();
+}
+(function(){
+  if(localStorage.getItem('kt_theme_auto')==='on'){
+    _autoMode=true;
+    applyAutoTheme();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyAutoTheme);
+  }else{
+    const s=localStorage.getItem('kt_theme')||'midnight';curTheme=s;document.documentElement.setAttribute('data-theme',s);
+  }
+})();
 function renderThemeGrid(){
   const g=document.getElementById('theme-grid');if(!g)return;g.innerHTML='';
+  const autoDark=localStorage.getItem('kt_theme_dark_auto');
+  const autoLight=localStorage.getItem('kt_theme_light_auto');
   ['Dark','Light'].forEach(lbl=>{
-    const sec=document.createElement('div');sec.className='tp-sec';sec.textContent=lbl;g.appendChild(sec);
-    THEMES.filter(t=>lbl==='Dark'?t.dark:!t.dark).forEach(t=>{
+    const isDarkSec=lbl==='Dark';
+    const sec=document.createElement('div');sec.className='tp-sec';
+    sec.textContent=_autoMode?(isDarkSec?'🌙 Night Theme':'☀️ Day Theme'):lbl;
+    g.appendChild(sec);
+    THEMES.filter(t=>isDarkSec?t.dark:!t.dark).forEach(t=>{
+      const isAutoSel=_autoMode&&(isDarkSec?t.id===autoDark:t.id===autoLight);
+      const isSingleSel=!_autoMode&&curTheme===t.id;
       const d=document.createElement('div');
-      d.className='tswatch'+(curTheme===t.id?' active':'');d.dataset.tid=t.id;
+      d.className='tswatch'+(isSingleSel?' active':'')+(isAutoSel?(isDarkSec?' auto-dark-sel':' auto-light-sel'):'');
+      d.dataset.tid=t.id;
       d.innerHTML=`<div class="tswatch-inner"><div class="tswatch-ribbon" style="background:${t.bar}"></div><div class="tswatch-bg-fill" style="background:${t.bg}"></div><div class="tswatch-emoji">${t.emoji}</div></div><div class="tswatch-name">${t.name}</div>`;
-      d.addEventListener('mouseenter',()=>{clearTimeout(_rt);document.documentElement.setAttribute('data-theme',t.id);document.querySelectorAll('.tswatch').forEach(el=>el.classList.toggle('active',el===d));});
-      d.addEventListener('mouseleave',()=>{_rt=setTimeout(()=>{document.documentElement.setAttribute('data-theme',curTheme);document.querySelectorAll('.tswatch').forEach(el=>el.classList.toggle('active',el.dataset.tid===curTheme));},80);});
-      d.addEventListener('click',e=>{e.stopPropagation();clearTimeout(_rt);applyTheme(t.id,true);closeThemePanel();});
+      d.addEventListener('mouseenter',()=>{clearTimeout(_rt);document.documentElement.setAttribute('data-theme',t.id);});
+      d.addEventListener('mouseleave',()=>{_rt=setTimeout(()=>{document.documentElement.setAttribute('data-theme',curTheme);},80);});
+      d.addEventListener('click',e=>{
+        e.stopPropagation();clearTimeout(_rt);
+        if(_autoMode){
+          const key=isDarkSec?'kt_theme_dark_auto':'kt_theme_light_auto';
+          localStorage.setItem(key,t.id);applyAutoTheme();renderThemeGrid();
+        }else{applyTheme(t.id,true);closeThemePanel();}
+      });
       g.appendChild(d);
     });
+    // Add Auto toggle after Light section
+    if(!isDarkSec){
+      const tog=document.createElement('div');
+      tog.className='auto-tog'+(_autoMode?' active':'');
+      tog.innerHTML=`🌓<br>Auto`;
+      tog.addEventListener('click',e=>{e.stopPropagation();toggleAutoTheme();});
+      g.appendChild(tog);
+    }
   });
 }
 function toggleThemePanel(){
@@ -848,8 +904,21 @@ function buildCal(){
   document.getElementById('calTitle').textContent=CAL_MONTHS[_calMonth]+' '+_calYear;
   const startDow=first.getDay();
   const daysInMonth=last.getDate();
+  const TOTAL=42;
   let cells='';
-  for(let i=0;i<startDow;i++)cells+=`<div class="cal-day other-month"></div>`;
+
+  // Leading days from previous month
+  let prevYear=_calYear,prevMonth=_calMonth-1;
+  if(prevMonth<0){prevMonth=11;prevYear--;}
+  const prevLast=new Date(prevYear,prevMonth+1,0).getDate();
+  for(let i=startDow-1;i>=0;i--){
+    const day=prevLast-i;
+    const k=`${prevYear}-${String(prevMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isFut=k>today;
+    cells+=`<div class="cal-day other-month${isFut?' future':''}"${!isFut?` onclick="calNavMonth(${prevYear},${prevMonth})"`:''} title="${k}">${day}</div>`;
+  }
+
+  // Current month days
   for(let day=1;day<=daysInMonth;day++){
     const k=`${_calYear}-${String(_calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const cls=['cal-day'];
@@ -863,6 +932,17 @@ function buildCal(){
     const isFuture=cls.includes('future');
     cells+=`<div class="${cls.join(' ')}"${!isFuture?` onclick="calSelect('${k}')"`:''} title="${k}">${day}</div>`;
   }
+
+  // Trailing days from next month (always fill to 42 cells)
+  let nextYear=_calYear,nextMonth=_calMonth+1;
+  if(nextMonth>11){nextMonth=0;nextYear++;}
+  const trailing=TOTAL-(startDow+daysInMonth);
+  for(let day=1;day<=trailing;day++){
+    const k=`${nextYear}-${String(nextMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isFut=k>today;
+    cells+=`<div class="cal-day other-month${isFut?' future':''}"${!isFut?` onclick="calNavMonth(${nextYear},${nextMonth})"`:''} title="${k}">${day}</div>`;
+  }
+
   document.getElementById('calGrid').innerHTML=cells;
   const now=new Date();
   const footer=document.getElementById('calFooter');
@@ -870,6 +950,8 @@ function buildCal(){
     footer.innerHTML=`<button class="cal-today-btn" onclick="calGoToday()">↩ Go to Today</button>`;
   }else{footer.innerHTML='';}
 }
+
+function calNavMonth(year,month){_calYear=year;_calMonth=month;buildCal();}
 
 function calSelect(k){jumpTo(k);closeCal();}
 
