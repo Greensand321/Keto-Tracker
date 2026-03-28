@@ -388,7 +388,7 @@ textarea::placeholder{color:var(--txt-d)}
 <div class="toast" id="toast"></div>
 <input type="file" id="fileIn" accept=".json" style="display:none" onchange="handleImport(event)">
 <input type="file" id="zipIn"  accept=".zip"  style="display:none" onchange="handleZipImport(event)">
-<input type="file" id="camIn" accept="image/*" style="display:none" onchange="handleCamera(event)">
+<input type="file" id="camIn" accept="image/*" capture="environment" style="display:none" onchange="handleCamera(event)">
 
 <div id="photoModal" class="fs-modal">
   <div class="fs-hdr"><div class="fs-title">📷 Meal Photo</div><button class="ico-btn" onclick="closePhotoModal()">✕</button></div>
@@ -1435,26 +1435,26 @@ async function selHeart(v){ent.heart=v;if(v==='good')ent.heartNotes='';await sav
 
 // ── QUICK SELECT ──────────────────────────────────────────────────────────────
 const QS_DEFAULTS=['Eggs','Bacon','Chicken','Steak','Salmon','Avocado','Cheddar','HM Mayo','Sourdough','Broccoli','Cauliflower','Almonds','Coffee','Butter','Cream','Olive Oil'];
-let _qsMeal=null,_qsSelected=new Set();
+let _qsMeal=null,_qsSelected=new Set(),_qsBase='';
 function getQuickSelItems(){const s=Storage.prefs.get('quicksel');return s?JSON.parse(s):[...QS_DEFAULTS];}
 function openQuickSel(meal){
-  _qsMeal=meal;_qsSelected=new Set();
-  document.getElementById('qsGrid').innerHTML=getQuickSelItems().map(f=>`<button class="qs-chip" onclick="toggleQsChip(this,${JSON.stringify(f)})">${f}</button>`).join('');
+  _qsMeal=meal;_qsSelected=new Set();_qsBase=ent[meal]||'';
+  document.getElementById('qsGrid').innerHTML=getQuickSelItems().map(f=>`<button class="qs-chip" data-food="${f.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="toggleQsChip(this)">${f}</button>`).join('');
   document.getElementById('qsOverlay').classList.add('open');
 }
-function toggleQsChip(el,food){
+function toggleQsChip(el){
+  const food=el.dataset.food;
   if(_qsSelected.has(food)){_qsSelected.delete(food);el.classList.remove('sel');}
   else{_qsSelected.add(food);el.classList.add('sel');}
+  const additions=[..._qsSelected].join(', ');
+  const preview=additions?(_qsBase?_qsBase+', '+additions:additions):_qsBase;
+  const ta=document.getElementById('ta');
+  if(ta)ta.value=preview;
 }
 async function closeQuickSel(){
-  if(_qsSelected.size>0){
-    const cur=ent[_qsMeal]||'';
-    const additions=[..._qsSelected].join(', ');
-    const next=cur?cur+', '+additions:additions;
-    await upd(_qsMeal,next);
-    const ta=document.getElementById('ta');
-    if(ta)ta.value=next;
-  }
+  const additions=[..._qsSelected].join(', ');
+  const next=additions?(_qsBase?_qsBase+', '+additions:additions):_qsBase;
+  if(next!==_qsBase)await upd(_qsMeal,next);
   _qsSelected=new Set();
   document.getElementById('qsOverlay').classList.remove('open');
 }
