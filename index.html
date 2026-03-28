@@ -22,6 +22,10 @@
 <!-- Favicon -->
 <link rel="icon" sizes="192x192" href="./icons/icon-192.png">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥑</text></svg>">
+
+<!-- Capacitor bridge — injected automatically by the native WebView.
+     The onerror suppresses the 404 when running as a plain browser PWA. -->
+<script src="capacitor.js" onerror="void 0"></script>
 <style>
 :root{--bg:#060d18;--bd:rgba(255,255,255,.07);--bd-i:rgba(255,255,255,.1);--txt:#e2e8f0;--txt-m:#94a3b8;--txt-d:#475569;--surf:rgba(255,255,255,.055);--surf2:rgba(255,255,255,.08);--inp:rgba(255,255,255,.05);--accent:#5cb85c;--gold:#f5c842;--red:#e05252;--blue:#5b9cf6}
 [data-theme="obsidian"]{--bg:#000;--surf:rgba(255,255,255,.04);--surf2:rgba(255,255,255,.07)}
@@ -348,33 +352,74 @@ textarea::placeholder{color:var(--txt-d)}
 </div>
 
 <script>
+// ── CAPACITOR DETECTION ───────────────────────────────────────────────────────
+// CAP is true only inside a Capacitor native WebView (Android / iOS).
+// FS / Dir are null on plain web — localStorage / IndexedDB paths stay active.
+const CAP = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform();
+const FS  = CAP ? Capacitor.Plugins.Filesystem : null;
+const Dir = 'DATA'; // FilesystemDirectory.Data → getFilesDir() on Android
+
 // ── STORAGE MODULE ────────────────────────────────────────────────────────────
 const Storage = (() => {
   const P  = 'kt_';           // pref/general prefix
   const PD = 'kt_d_';         // day entry prefix
   const PS = 'kt__snapshots'; // snapshot key
 
-  const day = {
-    get(k)    { const r=localStorage.getItem(PD+k); return r?JSON.parse(r):null; },
-    set(k,v)  { localStorage.setItem(PD+k, JSON.stringify(v)); },
-    delete(k) { localStorage.removeItem(PD+k); },
-    allKeys() {
-      const a=[];
-      for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith(PD))a.push(k.slice(PD.length));}
-      return a.sort();
-    }
-  };
-
-  const snaps = {
-    get()    { const r=localStorage.getItem(PS); return r?JSON.parse(r):[]; },
-    set(arr) { localStorage.setItem(PS, JSON.stringify(arr)); }
-  };
-
+  // ── prefs: always localStorage (tiny; needed synchronously for theme init) ──
   const prefs = {
     get(key)      { return localStorage.getItem(P+key); },
     set(key, val) { localStorage.setItem(P+key, val); }
   };
 
+  // ── day: localStorage on web, Filesystem JSON files on native ──────────────
+  const day = {
+    async get(k) {
+      if (!CAP) { const r=localStorage.getItem(PD+k); return r?JSON.parse(r):null; }
+      try {
+        const {data}=await FS.readFile({path:`days/${k}.json`,directory:Dir,encoding:'utf8'});
+        return JSON.parse(data);
+      } catch(_) { return null; }
+    },
+    async set(k,v) {
+      if (!CAP) { localStorage.setItem(PD+k,JSON.stringify(v)); return; }
+      await FS.writeFile({path:`days/${k}.json`,directory:Dir,data:JSON.stringify(v),encoding:'utf8'});
+    },
+    async delete(k) {
+      if (!CAP) { localStorage.removeItem(PD+k); return; }
+      try { await FS.deleteFile({path:`days/${k}.json`,directory:Dir}); } catch(_) {}
+    },
+    async allKeys() {
+      if (!CAP) {
+        const a=[];
+        for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith(PD))a.push(k.slice(PD.length));}
+        return a.sort();
+      }
+      try {
+        const {files}=await FS.readdir({path:'days',directory:Dir});
+        return files
+          .map(f=>(typeof f==='string'?f:f.name).replace('.json',''))
+          .filter(n=>/^\d{4}-\d{2}-\d{2}$/.test(n))
+          .sort();
+      } catch(_) { return []; }
+    }
+  };
+
+  // ── snaps: localStorage on web, snapshots.json on native ───────────────────
+  const snaps = {
+    async get() {
+      if (!CAP) { const r=localStorage.getItem(PS); return r?JSON.parse(r):[]; }
+      try {
+        const {data}=await FS.readFile({path:'snapshots.json',directory:Dir,encoding:'utf8'});
+        return JSON.parse(data);
+      } catch(_) { return []; }
+    },
+    async set(arr) {
+      if (!CAP) { localStorage.setItem(PS,JSON.stringify(arr)); return; }
+      await FS.writeFile({path:'snapshots.json',directory:Dir,data:JSON.stringify(arr),encoding:'utf8'});
+    }
+  };
+
+  // ── photos: IndexedDB on web, Filesystem JPEG files on native ──────────────
   const _PH_DB='keto-photos', _PH_ST='photos';
   let _db=null;
   function _openDB(){
@@ -387,69 +432,174 @@ const Storage = (() => {
     });
   }
   function _phk(date,meal,idx){return idx==null?date+'_'+meal:date+'_'+meal+'_'+idx;}
+  function _phPath(date,meal,idx){return idx==null?`photos/${date}_${meal}.jpg`:`photos/${date}_${meal}_${idx}.jpg`;}
+  function _blobToB64(blob){
+    return new Promise((res,rej)=>{
+      const fr=new FileReader();
+      fr.onload=()=>res(fr.result.split(',')[1]);
+      fr.onerror=rej;
+      fr.readAsDataURL(blob);
+    });
+  }
+  function _b64ToBlob(b64,mime='image/jpeg'){
+    const bin=atob(b64),arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    return new Blob([arr],{type:mime});
+  }
+
   const photos = {
-    save(date,meal,blob)      {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).put(blob,_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));},
-    get(date,meal)            {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readonly');const r=tx.objectStore(_PH_ST).get(_phk(date,meal));r.onsuccess=e=>res(e.target.result||null);r.onerror=rej;}));},
-    delete(date,meal)         {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).delete(_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));},
-    saveAt(date,meal,idx,blob){return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).put(blob,_phk(date,meal,idx));tx.oncomplete=res;tx.onerror=rej;}));},
-    getAt(date,meal,idx)      {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readonly');const r=tx.objectStore(_PH_ST).get(_phk(date,meal,idx));r.onsuccess=e=>res(e.target.result||null);r.onerror=rej;}));},
-    deleteAt(date,meal,idx)   {return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).delete(_phk(date,meal,idx));tx.oncomplete=res;tx.onerror=rej;}));}
+    async save(date,meal,blob) {
+      if (!CAP) return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).put(blob,_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));
+      await FS.writeFile({path:_phPath(date,meal,null),directory:Dir,data:await _blobToB64(blob)});
+    },
+    async get(date,meal) {
+      if (!CAP) return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readonly');const r=tx.objectStore(_PH_ST).get(_phk(date,meal));r.onsuccess=e=>res(e.target.result||null);r.onerror=rej;}));
+      try { const {data}=await FS.readFile({path:_phPath(date,meal,null),directory:Dir}); return _b64ToBlob(data); } catch(_) { return null; }
+    },
+    async delete(date,meal) {
+      if (!CAP) return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).delete(_phk(date,meal));tx.oncomplete=res;tx.onerror=rej;}));
+      try { await FS.deleteFile({path:_phPath(date,meal,null),directory:Dir}); } catch(_) {}
+    },
+    async saveAt(date,meal,idx,blob) {
+      if (!CAP) return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).put(blob,_phk(date,meal,idx));tx.oncomplete=res;tx.onerror=rej;}));
+      await FS.writeFile({path:_phPath(date,meal,idx),directory:Dir,data:await _blobToB64(blob)});
+    },
+    async getAt(date,meal,idx) {
+      if (!CAP) return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readonly');const r=tx.objectStore(_PH_ST).get(_phk(date,meal,idx));r.onsuccess=e=>res(e.target.result||null);r.onerror=rej;}));
+      try { const {data}=await FS.readFile({path:_phPath(date,meal,idx),directory:Dir}); return _b64ToBlob(data); } catch(_) { return null; }
+    },
+    async deleteAt(date,meal,idx) {
+      if (!CAP) return _openDB().then(db=>new Promise((res,rej)=>{const tx=db.transaction(_PH_ST,'readwrite');tx.objectStore(_PH_ST).delete(_phk(date,meal,idx));tx.oncomplete=res;tx.onerror=rej;}));
+      try { await FS.deleteFile({path:_phPath(date,meal,idx),directory:Dir}); } catch(_) {}
+    }
   };
 
+  // ── stats ───────────────────────────────────────────────────────────────────
   async function stats(){
-    // Text: count only kt_ prefixed keys, not foreign app keys
-    let textBytes=0;
+    if (!CAP) {
+      // Original localStorage + IndexedDB path (unchanged for web PWA)
+      let textBytes=0;
+      try {
+        for(let i=0;i<localStorage.length;i++){
+          const k=localStorage.key(i);
+          if(k&&k.startsWith(P))textBytes+=(k.length+(localStorage.getItem(k)||'').length)*2;
+        }
+      } catch(e) { console.error('Could not calculate text storage:',e); }
+      const textKB=Math.round(textBytes/1024);
+      let photoBytes=0,photoCount=0;
+      try{
+        const db=await _openDB();
+        await new Promise((resolve,reject)=>{
+          const tx=db.transaction(_PH_ST,'readonly');
+          const store=tx.objectStore(_PH_ST);
+          const req=store.openCursor();
+          req.onsuccess=e=>{const cur=e.target.result;if(!cur){resolve();return;}if(cur.value){photoBytes+=cur.value.size||0;photoCount++;}cur.continue();};
+          req.onerror=e=>{console.error('DB cursor error:',e.target.error);reject(e.target.error);};
+        });
+      } catch(e) { console.error('Could not calculate photo storage:',e); }
+      const photoKB=Math.round(photoBytes/1024);
+      let quotaKB=5120;
+      try{ const est=await navigator.storage.estimate(); if(est.quota)quotaKB=Math.round(est.quota/1024); } catch(e) {}
+      const totalKB=textKB+photoKB;
+      const pct=Math.min(100,Math.round((totalKB/Math.max(1,quotaKB))*100));
+      return{textKB,photoKB,photoCount,totalKB,quotaKB,pct};
+    }
+
+    // Capacitor path: stat each file in days/ and photos/
+    let textBytes=0,photoBytes=0,photoCount=0;
     try {
-      for(let i=0;i<localStorage.length;i++){
-        const k=localStorage.key(i);
-        if(k&&k.startsWith(P))textBytes+=(k.length+(localStorage.getItem(k)||'').length)*2; // UTF-16
+      const {files}=await FS.readdir({path:'days',directory:Dir});
+      for(const f of files){
+        try{const s=await FS.stat({path:`days/${typeof f==='string'?f:f.name}`,directory:Dir});textBytes+=s.size||0;}catch(_){}
       }
-    } catch (e) {
-      console.error("Could not calculate text storage:", e);
+    } catch(_) {}
+    for(const file of ['snapshots.json']){
+      try{const s=await FS.stat({path:file,directory:Dir});textBytes+=s.size||0;}catch(_){}
     }
-    const textKB=Math.round(textBytes/1024);
-
-    // Photos: cursor to sum blob sizes without loading blob data into memory
-    let photoBytes=0,photoCount=0;
-    try{
-      const db=await _openDB();
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction(_PH_ST,'readonly');
-        const store = tx.objectStore(_PH_ST);
-        const req = store.openCursor();
-        req.onsuccess=e=>{
-          const cur=e.target.result;
-          if(!cur){resolve();return;}
-          if(cur.value){photoBytes+=cur.value.size||0;photoCount++;}
-          cur.continue();
-        };
-        req.onerror = e => {
-          console.error("DB cursor error:", e.target.error);
-          reject(e.target.error);
-        };
-      });
-    } catch(e) {
-      console.error("Could not calculate photo storage:", e);
-    }
-    const photoKB=Math.round(photoBytes/1024);
-
-    // Quota: use real browser estimate, fall back to 5 MB
-    let quotaKB=5120;
-    try{
-      const est=await navigator.storage.estimate();
-      if(est.quota)quotaKB=Math.round(est.quota/1024);
-    } catch(e) {
-      console.error("Could not estimate storage quota:", e);
-    }
-
-    const totalKB=textKB+photoKB;
-    const quotaToUse = Math.max(1, quotaKB); // Avoid division by zero
-    const pct = Math.min(100, Math.round((totalKB / quotaToUse) * 100));
-    return{textKB,photoKB,photoCount,totalKB,quotaKB,pct};
+    try {
+      const {files}=await FS.readdir({path:'photos',directory:Dir});
+      for(const f of files){
+        try{const s=await FS.stat({path:`photos/${typeof f==='string'?f:f.name}`,directory:Dir});photoBytes+=s.size||0;photoCount++;}catch(_){}
+      }
+    } catch(_) {}
+    const totalKB=Math.round((textBytes+photoBytes)/1024);
+    // Directory.Data is effectively quota-free; use 512 MB as a display ceiling
+    const quotaKB=524288;
+    const pct=Math.min(100,Math.round((totalKB/quotaKB)*100));
+    return{textKB:Math.round(textBytes/1024),photoKB:Math.round(photoBytes/1024),photoCount,totalKB,quotaKB,pct};
   }
 
   return{day,snaps,prefs,photos,stats};
 })();
+
+// ── CAPACITOR FILESYSTEM INIT & FIRST-RUN MIGRATION ──────────────────────────
+async function initFilesystem() {
+  if (!CAP) return;
+  // Ensure required directories and base files exist
+  for (const dir of ['days','photos']) {
+    try { await FS.mkdir({path:dir,directory:Dir,recursive:true}); } catch(_) {}
+  }
+  try { await FS.stat({path:'snapshots.json',directory:Dir}); }
+  catch(_) { await FS.writeFile({path:'snapshots.json',directory:Dir,data:'[]',encoding:'utf8'}); }
+  await _runMigrationIfNeeded();
+}
+
+// Migrates any existing localStorage / IndexedDB data to Filesystem on first run.
+// Idempotent: protected by the 'migrated_v1' pref flag written last.
+async function _runMigrationIfNeeded() {
+  if (Storage.prefs.get('migrated_v1') === 'true') return;
+  const PD='kt_d_', PS='kt__snapshots';
+
+  // 1. Day entries
+  const dayKeys=[];
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith(PD))dayKeys.push(k.slice(PD.length));}
+  let migrated=0;
+  for(const k of dayKeys){
+    const raw=localStorage.getItem(PD+k);
+    if(raw){
+      try{await FS.writeFile({path:`days/${k}.json`,directory:Dir,data:raw,encoding:'utf8'});migrated++;}
+      catch(e){console.error('Migration: failed to write day '+k,e);}
+    }
+  }
+
+  // 2. Snapshots
+  const snapsRaw=localStorage.getItem(PS);
+  try{await FS.writeFile({path:'snapshots.json',directory:Dir,data:snapsRaw||'[]',encoding:'utf8'});}
+  catch(e){console.error('Migration: failed to write snapshots',e);}
+
+  // 3. Photos from IndexedDB
+  await _migratePhotosFromIDB();
+
+  // 4. Mark complete (written last so a crashed migration re-runs cleanly)
+  Storage.prefs.set('migrated_v1','true');
+  if(migrated>0){toast(`Migrated ${migrated} day${migrated!==1?'s':''} to native storage ✓`);}
+}
+
+// Cursors over every entry in IndexedDB keto-photos and writes it as a
+// Filesystem JPEG file.  Non-fatal: errors are logged, not thrown.
+async function _migratePhotosFromIDB() {
+  try{
+    const db=await new Promise((res,rej)=>{
+      const r=indexedDB.open('keto-photos',1);
+      r.onupgradeneeded=e=>e.target.result.createObjectStore('photos');
+      r.onsuccess=e=>res(e.target.result);
+      r.onerror=rej;
+    });
+    const entries=await new Promise((res,rej)=>{
+      const tx=db.transaction('photos','readonly');
+      const req=tx.objectStore('photos').openCursor();
+      const out=[];
+      req.onsuccess=e=>{const cur=e.target.result;if(!cur){res(out);return;}out.push({key:cur.primaryKey,blob:cur.value});cur.continue();};
+      req.onerror=rej;
+    });
+    for(const {key,blob} of entries){
+      try{
+        const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(blob);});
+        await FS.writeFile({path:`photos/${key}.jpg`,directory:Dir,data:b64});
+      }catch(e){console.error('Migration: failed to write photo '+key,e);}
+    }
+  }catch(e){console.warn('Photo migration skipped (no prior IndexedDB data or error):',e);}
+}
 
 // ── THEME ────────────────────────────────────────────────────────────────────
 const THEMES=[
@@ -561,44 +711,74 @@ function toast(msg,err=false){
 
 // ── DATA SHIMS (delegate to Storage module) ───────────────────────────────────
 const MAX_SNAPS=25;
-function lsGetDay(k)   {return Storage.day.get(k);}
-function lsSetDay(k,v) {Storage.day.set(k,v);}
-function lsAllDayKeys(){return Storage.day.allKeys();}
-function lsGetSnaps()  {return Storage.snaps.get();}
-function lsSetSnaps(a) {Storage.snaps.set(a);}
+async function lsGetDay(k)   {return Storage.day.get(k);}
+async function lsSetDay(k,v) {return Storage.day.set(k,v);}
+async function lsAllDayKeys(){return Storage.day.allKeys();}
+async function lsGetSnaps()  {return Storage.snaps.get();}
+async function lsSetSnaps(a) {return Storage.snaps.set(a);}
 
 // ── DATA OPS ─────────────────────────────────────────────────────────────────
-function load(k){return lsGetDay(k)||{date:k,breakfast:'',lunch:'',dinner:'',energy:null,happiness:null,portion:null,notInKeto:false,tested:false,notes:'',breakfastKeto:false,lunchKeto:false,dinnerKeto:false};}
-function save(k,e){lsSetDay(k,e);}
-function allKeys(){return lsAllDayKeys();}
-
-function saveSnapshot(name){
-  const snaps=lsGetSnaps();
-  if(snaps.length>=MAX_SNAPS){toast('Max '+MAX_SNAPS+' snapshots reached',true);return false;}
-  const data={};allKeys().forEach(k=>data[k]=load(k));
-  snaps.unshift({id:Date.now(),name:name||('Snapshot '+new Date().toLocaleString()),ts:Date.now(),days:allKeys().length,data});
-  lsSetSnaps(snaps);return true;
+async function load(k){
+  const r=await lsGetDay(k);
+  return r||{date:k,breakfast:'',lunch:'',dinner:'',energy:null,happiness:null,portion:null,notInKeto:false,tested:false,notes:'',breakfastKeto:false,lunchKeto:false,dinnerKeto:false};
 }
-function restoreSnapshot(id){
-  const snap=lsGetSnaps().find(s=>s.id===id);if(!snap)return;
+async function save(k,e){return lsSetDay(k,e);}
+async function allKeys(){return lsAllDayKeys();}
+
+async function saveSnapshot(name){
+  const snaps=await lsGetSnaps();
+  if(snaps.length>=MAX_SNAPS){toast('Max '+MAX_SNAPS+' snapshots reached',true);return false;}
+  const keys=await allKeys();
+  const entries=await Promise.all(keys.map(k=>load(k)));
+  const data=Object.fromEntries(keys.map((k,i)=>[k,entries[i]]));
+  snaps.unshift({id:Date.now(),name:name||('Snapshot '+new Date().toLocaleString()),ts:Date.now(),days:keys.length,data});
+  await lsSetSnaps(snaps);return true;
+}
+async function restoreSnapshot(id){
+  const snap=(await lsGetSnaps()).find(s=>s.id===id);if(!snap)return;
   if(!confirm('Restore this snapshot? Your current entries will be replaced.'))return;
-  allKeys().forEach(k=>Storage.day.delete(k));
-  Object.entries(snap.data).forEach(([k,v])=>lsSetDay(k,v));
-  vk=todayKey();ent=load(vk);si=defStep(ent);render();
+  const keys=await allKeys();
+  await Promise.all(keys.map(k=>Storage.day.delete(k)));
+  await Promise.all(Object.entries(snap.data).map(([k,v])=>lsSetDay(k,v)));
+  vk=todayKey();ent=await load(vk);si=defStep(ent);render();
   toast('Snapshot restored ✓');closeSettings();
 }
-function deleteSnapshot(id){
+async function deleteSnapshot(id){
   if(!confirm('Delete this snapshot?'))return;
-  lsSetSnaps(lsGetSnaps().filter(s=>s.id!==id));
+  await lsSetSnaps((await lsGetSnaps()).filter(s=>s.id!==id));
   renderSettings();toast('Snapshot deleted');
 }
-function exportSnapshot(id){
-  const snap=lsGetSnaps().find(s=>s.id===id);if(!snap)return;
-  dlJSON(snap.data,'keto-snapshot-'+new Date(snap.ts).toISOString().slice(0,10)+'.json');
+async function exportSnapshot(id){
+  const snap=(await lsGetSnaps()).find(s=>s.id===id);if(!snap)return;
+  await exportToDownloads(snap.data,'keto-snapshot-'+new Date(snap.ts).toISOString().slice(0,10)+'.json');
 }
-function exportAll(){
-  const data={};allKeys().forEach(k=>data[k]=load(k));
-  dlJSON(data,'keto-all-data-'+todayKey()+'.json');
+async function exportAll(){
+  const keys=await allKeys();
+  const entries=await Promise.all(keys.map(k=>load(k)));
+  const data=Object.fromEntries(keys.map((k,i)=>[k,entries[i]]));
+  await exportToDownloads(data,'keto-all-data-'+todayKey()+'.json');
+}
+// exportToDownloads: writes to the public Downloads folder on Android via
+// Capacitor Filesystem; falls back to a web anchor download on plain browser.
+async function exportToDownloads(obj,fname){
+  if(!CAP){dlJSON(obj,fname);return;}
+  try{
+    // Check / request WRITE_EXTERNAL_STORAGE (required only on Android ≤ 9)
+    const perm=await FS.checkPermissions().catch(()=>({publicStorage:'granted'}));
+    if(perm.publicStorage!=='granted'){
+      const req=await FS.requestPermissions().catch(()=>({publicStorage:'denied'}));
+      if(req.publicStorage!=='granted'){
+        toast('Storage permission denied — file not saved',true);
+        return;
+      }
+    }
+    await FS.writeFile({path:fname,directory:'DOWNLOADS',data:JSON.stringify(obj,null,2),encoding:'utf8'});
+    toast('Saved to Downloads ✓');
+  }catch(e){
+    console.error('exportToDownloads failed:',e);
+    // Fall back to web-style download (triggers share sheet on some Android configs)
+    dlJSON(obj,fname);
+  }
 }
 function dlJSON(obj,fname){
   const a=document.createElement('a');
@@ -620,7 +800,7 @@ function mergeEntries(existing,imported){
 function handleImport(e){
   const file=e.target.files[0];if(!file)return;
   const r=new FileReader();
-  r.onload=ev=>{
+  r.onload=async ev=>{
     try{
       const raw=JSON.parse(ev.target.result);
       if(typeof raw!=='object'||Array.isArray(raw))throw 0;
@@ -632,7 +812,7 @@ function handleImport(e){
       }
       if(!Object.keys(valid).length){toast('No valid entries found in file',true);e.target.value='';return;}
       // Split into new entries and duplicates
-      const existingSet=new Set(allKeys());
+      const existingSet=new Set(await allKeys());
       const newKeys=Object.keys(valid).filter(k=>!existingSet.has(k));
       const dupKeys=Object.keys(valid).filter(k=>existingSet.has(k));
       // First confirm — show counts
@@ -649,11 +829,15 @@ function handleImport(e){
         }
       }
       // Write new entries
-      newKeys.forEach(dk=>lsSetDay(dk,valid[dk]));
+      await Promise.all(newKeys.map(dk=>lsSetDay(dk,valid[dk])));
       // Handle duplicates per chosen mode
-      if(dupMode==='merge')dupKeys.forEach(dk=>lsSetDay(dk,mergeEntries(load(dk),valid[dk])));
-      else if(dupMode==='overwrite')dupKeys.forEach(dk=>lsSetDay(dk,valid[dk]));
-      vk=todayKey();ent=load(vk);si=defStep(ent);render();
+      if(dupMode==='merge'){
+        const existing=await Promise.all(dupKeys.map(dk=>load(dk)));
+        await Promise.all(dupKeys.map((dk,i)=>lsSetDay(dk,mergeEntries(existing[i],valid[dk]))));
+      }else if(dupMode==='overwrite'){
+        await Promise.all(dupKeys.map(dk=>lsSetDay(dk,valid[dk])));
+      }
+      vk=todayKey();ent=await load(vk);si=defStep(ent);render();
       const dupCount=dupMode!=='skip'?dupKeys.length:0;
       const written=newKeys.length+dupCount;
       const modeLabel=dupKeys.length?(dupMode==='merge'?' (merged)':dupMode==='overwrite'?' (overwritten)':` · ${dupKeys.length} duplicate${dupKeys.length!==1?'s':''} skipped`):'';
@@ -681,8 +865,9 @@ function setQuality(level) {
 }
 
 async function renderSettings(){
-  const snaps=Storage.snaps.get();
+  const snaps=await Storage.snaps.get();
   const st=await Storage.stats();
+  const dayCount=(await allKeys()).length;
   const barCls=st.pct>=90?'full':st.pct>=65?'warn':'';
   const quality = Storage.prefs.get('quality') || 'medium';
 
@@ -700,7 +885,7 @@ async function renderSettings(){
           <span style="color:var(--txt-m)">${st.totalKB} KB / ${st.quotaKB} KB</span>
         </div>
         <div class="storage-bar-wrap"><div class="storage-bar ${barCls}" style="width:${st.pct}%"></div></div>
-        <div style="font-size:.75rem;color:var(--txt-m)">${allKeys().length} days logged · ${snaps.length} snapshot${snaps.length!==1?'s':''} saved · ${st.photoCount} photo${st.photoCount!==1?'s':''} · ${st.pct}% used</div>
+        <div style="font-size:.75rem;color:var(--txt-m)">${dayCount} days logged · ${snaps.length} snapshot${snaps.length!==1?'s':''} saved · ${st.photoCount} photo${st.photoCount!==1?'s':''} · ${st.pct}% used</div>
         <div style="font-size:.72rem;color:var(--txt-d);margin-top:3px">Text data: ${st.textKB} KB · Photos: ${st.photoKB} KB</div>
       </div>
     </div>
@@ -758,14 +943,14 @@ async function renderSettings(){
       ⚠️ <strong>Avoid clearing browser data</strong> — this will erase your entries. Use Export regularly as a backup.
     </div>`;
 }
-function doSaveSnap(){
+async function doSaveSnap(){
   const inp=document.getElementById('snapName');
   const name=inp.value.trim()||('Snapshot '+new Date().toLocaleString());
-  if(saveSnapshot(name)){inp.value='';toast('Snapshot saved ✓');renderSettings();}
+  if(await saveSnapshot(name)){inp.value='';toast('Snapshot saved ✓');renderSettings();}
 }
 
 // ── VERSION ───────────────────────────────────────────────────────────────────
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 
 // ── TRACKER ──────────────────────────────────────────────────────────────────
 const STEPS=['breakfast','lunch','dinner','energy','happiness','portion','flags','notes','summary'];
@@ -805,7 +990,7 @@ function defStep(e){
   return STEPS.indexOf(inc[0]);
 }
 
-function init(){vk=todayKey();ent=load(vk);si=defStep(ent);render();}
+async function init(){await initFilesystem();vk=todayKey();ent=await load(vk);si=defStep(ent);render();}
 
 function render(){
   const isT=vk===todayKey();
@@ -880,25 +1065,26 @@ function renderSum(isT,canEdit=isT){
   </div>`;
 }
 
-function upd(f,v){ent[f]=v;save(vk,ent);}
-function selRate(f,v){ent[f]=v;save(vk,ent);renderStep();setTimeout(()=>next(),380);}
-function togFlag(f){ent[f]=!ent[f];save(vk,ent);renderStep();}
+async function upd(f,v){ent[f]=v;await save(vk,ent);}
+async function selRate(f,v){ent[f]=v;await save(vk,ent);renderStep();setTimeout(()=>next(),380);}
+async function togFlag(f){ent[f]=!ent[f];await save(vk,ent);renderStep();}
 function next(){if(si<STEPS.length-1){si++;render();}}
 function back(){if(si>0){si--;render();}}
 function skip(){next();}
 function editAt(idx){si=idx;render();}
-function markKeto(meal){ent[meal+'Keto']=true;save(vk,ent);next();}
-function goToday(){vk=todayKey();ent=load(vk);si=defStep(ent);render();}
-function chgDay(n){const nk=offKey(vk,n);if(nk>todayKey())return;vk=nk;ent=load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
-function jumpTo(k){vk=k;ent=load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
+async function markKeto(meal){ent[meal+'Keto']=true;await save(vk,ent);next();}
+async function goToday(){vk=todayKey();ent=await load(vk);si=defStep(ent);render();}
+async function chgDay(n){const nk=offKey(vk,n);if(nk>todayKey())return;vk=nk;ent=await load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
+async function jumpTo(k){vk=k;ent=await load(vk);si=vk===todayKey()?defStep(ent):STEPS.indexOf('summary');render();}
 
-function openOverview(){
+async function openOverview(){
   _selMode=false;_selKeys.clear();updateOvHeader();
-  const keys=allKeys().sort().reverse();
+  const keys=(await allKeys()).sort().reverse();
   const el=document.getElementById('ovBody');
   if(!keys.length){el.innerHTML=`<div class="ov-empty">No days logged yet.<br>Start tracking today!</div>`;document.getElementById('ovModal').classList.add('open');return;}
-  el.innerHTML=keys.map(k=>{
-    const e=load(k),isT=k===todayKey();
+  const entries=await Promise.all(keys.map(k=>load(k)));
+  el.innerHTML=keys.map((k,idx)=>{
+    const e=entries[idx],isT=k===todayKey();
     const meals=[['🍳',e.breakfast],['🥗',e.lunch],['🍽️',e.dinner]].filter(m=>m[1]);
     const flags=[];
     if(e.notInKeto)flags.push(`<span class="badge b-red" style="font-size:.7rem;padding:2px 8px">⚠️ Off Keto</span>`);
@@ -1200,10 +1386,10 @@ async function loadSummaryPhotoIcons() {
 const CAL_MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 let _calYear, _calMonth;
 
-function openCal(){
+async function openCal(){
   const d=new Date(vk+'T12:00:00');
   _calYear=d.getFullYear();_calMonth=d.getMonth();
-  buildCal();
+  await buildCal();
   document.getElementById('calPanel').classList.add('open');
   document.getElementById('calBackdrop').classList.add('open');
 }
@@ -1213,27 +1399,29 @@ function closeCal(){
   document.getElementById('calBackdrop').classList.remove('open');
 }
 
-function calPrev(){if(--_calMonth<0){_calMonth=11;_calYear--;}buildCal();}
-function calNext(){
+async function calPrev(){if(--_calMonth<0){_calMonth=11;_calYear--;}await buildCal();}
+async function calNext(){
   const now=new Date();
   if(_calYear>now.getFullYear()||(_calYear===now.getFullYear()&&_calMonth>=now.getMonth()))return;
-  if(++_calMonth>11){_calMonth=0;_calYear++;}buildCal();
+  if(++_calMonth>11){_calMonth=0;_calYear++;}await buildCal();
 }
 
-function buildCal(){
+async function buildCal(){
   const today=todayKey();
-  const dataSet=new Set(allKeys());
+  const dataSet=new Set(await allKeys());
   const testedKetoSet=new Set();
   const ketoMealsSet=new Set();
   const first=new Date(_calYear,_calMonth,1);
   const last=new Date(_calYear,_calMonth+1,0);
-  for(let d=new Date(first);d<=last;d.setDate(d.getDate()+1)){
-    const k=d.toISOString().slice(0,10);
-    if(dataSet.has(k)){
-      const entry=load(k);
-      if(entry.tested&&!entry.notInKeto)testedKetoSet.add(k);
-      else if((entry.breakfastKeto?1:0)+(entry.lunchKeto?1:0)+(entry.dinnerKeto?1:0)>=2)ketoMealsSet.add(k);
-    }
+  // Collect keys for this month that have data, then bulk-load
+  const monthKeys=[];
+  for(let d=new Date(first);d<=last;d.setDate(d.getDate()+1)){const k=d.toISOString().slice(0,10);if(dataSet.has(k))monthKeys.push(k);}
+  const monthEntries=await Promise.all(monthKeys.map(k=>load(k)));
+  const entryMap=Object.fromEntries(monthKeys.map((k,i)=>[k,monthEntries[i]]));
+  for(const k of monthKeys){
+    const entry=entryMap[k];
+    if(entry.tested&&!entry.notInKeto)testedKetoSet.add(k);
+    else if((entry.breakfastKeto?1:0)+(entry.lunchKeto?1:0)+(entry.dinnerKeto?1:0)>=2)ketoMealsSet.add(k);
   }
   document.getElementById('calTitle').innerHTML=CAL_MONTHS[_calMonth]+' '+_calYear+'<span style="font-size:.7em;opacity:.55;margin-left:3px">▾</span>';
   const startDow=first.getDay();
@@ -1282,11 +1470,11 @@ function buildCal(){
   document.getElementById('calFooter').innerHTML='';
 }
 
-function calNavMonth(year,month){_calYear=year;_calMonth=month;buildCal();}
+async function calNavMonth(year,month){_calYear=year;_calMonth=month;await buildCal();}
 
 function calSelect(k){jumpTo(k);closeCal();}
 
-function calGoToday(){const n=new Date();_calYear=n.getFullYear();_calMonth=n.getMonth();buildCal();}
+async function calGoToday(){const n=new Date();_calYear=n.getFullYear();_calMonth=n.getMonth();await buildCal();}
 
 // ── CALENDAR MONTH/YEAR PICKER ────────────────────────────────────────────────
 const CPKR_IH=40; // item height in px — must match .cpkr-item height
@@ -1294,8 +1482,8 @@ const CPKR_PAD=80; // top/bottom padding — must be 2 * CPKR_IH
 let _cpkrM=0,_cpkrY=0; // picker's in-progress selection
 let _cpkrTimers={},_cpkrBusy=false; // busy flag prevents scroll→snap→scroll loops
 
-function openCalPicker(){
-  const yearsWithData=new Set(allKeys().map(k=>parseInt(k.slice(0,4))));
+async function openCalPicker(){
+  const yearsWithData=new Set((await allKeys()).map(k=>parseInt(k.slice(0,4))));
   const now=new Date();
   const curY=now.getFullYear();
   const minY=yearsWithData.size?Math.min(...yearsWithData):curY-5;
@@ -1383,18 +1571,18 @@ function updateCpkrLabel(){
   document.getElementById('cpkrLabel').textContent=CAL_MONTHS[_cpkrM]+' '+_cpkrY;
 }
 
-function applyCalPicker(){
+async function applyCalPicker(){
   _calMonth=_cpkrM;
   _calYear=_cpkrY;
   closeCalPicker();
-  buildCal();
+  await buildCal();
 }
 
-function pickerGoToday(){
+async function pickerGoToday(){
   const n=new Date();
   _calYear=n.getFullYear();_calMonth=n.getMonth();
   closeCalPicker();
-  buildCal();
+  await buildCal();
 }
 
 // ── ALL DAYS: LONG-PRESS MULTI-SELECT & DELETE ────────────────────────────────
@@ -1458,13 +1646,12 @@ async function deleteSelected(){
   const n=_selKeys.size;
   if(!confirm(`Delete ${n} day${n>1?'s':''}? This cannot be undone.`))return;
   for(const k of _selKeys){
-    Storage.day.delete(k);
-    for(const meal of ['breakfast','lunch','dinner'])deleteAllMealPhotos(k,meal);
-    if(vk===k){vk=todayKey();ent=load(vk);}
+    await Storage.day.delete(k);
+    for(const meal of ['breakfast','lunch','dinner'])await deleteAllMealPhotos(k,meal);
+    if(vk===k){vk=todayKey();ent=await load(vk);}
   }
   exitSelMode();
-  renderHist();
-  openOverview();
+  await openOverview();
 }
 </script>
 </body>
