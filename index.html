@@ -342,6 +342,7 @@ textarea::placeholder{color:var(--txt-d)}
 
 <div class="toast" id="toast"></div>
 <input type="file" id="fileIn" accept=".json" style="display:none" onchange="handleImport(event)">
+<input type="file" id="zipIn"  accept=".zip"  style="display:none" onchange="handleZipImport(event)">
 <input type="file" id="camIn" accept="image/*" capture="environment" style="display:none" onchange="handleCamera(event)">
 
 <div id="photoModal" class="fs-modal">
@@ -358,6 +359,132 @@ textarea::placeholder{color:var(--txt-d)}
 const CAP = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform();
 const FS  = CAP ? Capacitor.Plugins.Filesystem : null;
 const Dir = 'DATA'; // FilesystemDirectory.Data → getFilesDir() on Android
+
+// ── ZIP UTILITY ───────────────────────────────────────────────────────────────
+// Minimal STORE-mode ZIP writer + reader. No external dependencies.
+// Only handles uncompressed files (JPEGs are already compressed; JSON is small).
+const _Zip = (() => {
+  // CRC-32 lookup table (standard IEEE 802.3 polynomial)
+  const _ct = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let j = 0; j < 8; j++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c;
+    }
+    return t;
+  })();
+  function _crc(d) {
+    let c = 0xffffffff;
+    for (let i = 0; i < d.length; i++) c = _ct[(c ^ d[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  const _enc = new TextEncoder();
+  const _dec = new TextDecoder();
+
+  // Pack [{path: string, data: Uint8Array}] → Blob (ZIP, STORE mode, no compression)
+  async function pack(entries) {
+    const parts = [], dir = [];
+    let off = 0;
+    for (const {path, data} of entries) {
+      const name = _enc.encode(path);
+      const crc = _crc(data), sz = data.length;
+      const lh = new Uint8Array(30 + name.length);
+      const lv = new DataView(lh.buffer);
+      lv.setUint32(0,  0x04034b50, true); // Local File Header signature
+      lv.setUint16(4,  20,         true); // version needed
+      lv.setUint16(6,  0,          true); // flags
+      lv.setUint16(8,  0,          true); // STORE (no compression)
+      lv.setUint16(10, 0,          true); // mod time
+      lv.setUint16(12, 0,          true); // mod date
+      lv.setUint32(14, crc,        true); // CRC-32
+      lv.setUint32(18, sz,         true); // compressed size
+      lv.setUint32(22, sz,         true); // uncompressed size
+      lv.setUint16(26, name.length,true); // filename length
+      lv.setUint16(28, 0,          true); // extra field length
+      lh.set(name, 30);
+      parts.push(lh, data);
+      dir.push({name, crc, sz, off});
+      off += 30 + name.length + sz;
+    }
+    // Central directory
+    const cdOff = off;
+    let cdSz = 0;
+    for (const {name, crc, sz, off: fOff} of dir) {
+      const cd = new Uint8Array(46 + name.length);
+      const cv = new DataView(cd.buffer);
+      cv.setUint32(0,  0x02014b50, true); // Central Directory File Header sig
+      cv.setUint16(4,  20,         true); // version made by
+      cv.setUint16(6,  20,         true); // version needed
+      cv.setUint16(8,  0,          true); // flags
+      cv.setUint16(10, 0,          true); // STORE
+      cv.setUint16(12, 0,          true); // mod time
+      cv.setUint16(14, 0,          true); // mod date
+      cv.setUint32(16, crc,        true); // CRC-32
+      cv.setUint32(20, sz,         true); // compressed size
+      cv.setUint32(24, sz,         true); // uncompressed size
+      cv.setUint16(28, name.length,true); // filename length
+      cv.setUint16(30, 0,          true); // extra length
+      cv.setUint16(32, 0,          true); // comment length
+      cv.setUint16(34, 0,          true); // disk start
+      cv.setUint16(36, 0,          true); // internal attributes
+      cv.setUint32(38, 0,          true); // external attributes
+      cv.setUint32(42, fOff,       true); // offset of local file header
+      cd.set(name, 46);
+      parts.push(cd);
+      cdSz += cd.length;
+    }
+    // End of Central Directory record
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0,  0x06054b50,  true); // EOCD signature
+    ev.setUint16(4,  0,           true); // disk number
+    ev.setUint16(6,  0,           true); // start disk
+    ev.setUint16(8,  dir.length,  true); // entries on this disk
+    ev.setUint16(10, dir.length,  true); // total entries
+    ev.setUint32(12, cdSz,        true); // central dir size
+    ev.setUint32(16, cdOff,       true); // central dir offset
+    ev.setUint16(20, 0,           true); // comment length
+    parts.push(eocd);
+    return new Blob(parts, {type: 'application/zip'});
+  }
+
+  // Unpack ZIP Blob → Map<path, Uint8Array>
+  async function unpack(blob) {
+    const buf = await blob.arrayBuffer();
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+    const out = new Map();
+    // Locate End of Central Directory by scanning backwards from the end
+    let eocdOff = -1;
+    for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65558); i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { eocdOff = i; break; }
+    }
+    if (eocdOff === -1) throw new Error('Not a valid ZIP file');
+    const total = view.getUint16(eocdOff + 10, true);
+    let pos = view.getUint32(eocdOff + 16, true);
+    for (let i = 0; i < total; i++) {
+      if (view.getUint32(pos, true) !== 0x02014b50) break;
+      const nameLen    = view.getUint16(pos + 28, true);
+      const extraLen   = view.getUint16(pos + 30, true);
+      const cmtLen     = view.getUint16(pos + 32, true);
+      const lhOff      = view.getUint32(pos + 42, true);
+      const name       = _dec.decode(bytes.subarray(pos + 46, pos + 46 + nameLen));
+      // Read data location from the local file header
+      const compSz     = view.getUint32(lhOff + 18, true);
+      const lhNameLen  = view.getUint16(lhOff + 26, true);
+      const lhExtraLen = view.getUint16(lhOff + 28, true);
+      const dataStart  = lhOff + 30 + lhNameLen + lhExtraLen;
+      if (!name.endsWith('/') && compSz > 0) {
+        out.set(name, bytes.slice(dataStart, dataStart + compSz));
+      }
+      pos += 46 + nameLen + extraLen + cmtLen;
+    }
+    return out;
+  }
+
+  return {pack, unpack};
+})();
 
 // ── STORAGE MODULE ────────────────────────────────────────────────────────────
 const Storage = (() => {
@@ -601,6 +728,46 @@ async function _migratePhotosFromIDB() {
   }catch(e){console.warn('Photo migration skipped (no prior IndexedDB data or error):',e);}
 }
 
+// ── PHOTO ENUMERATION ─────────────────────────────────────────────────────────
+// Returns [{date, meal, idx}] for every stored photo across all days + meals.
+// idx===null = legacy single-photo key; idx 0-4 = indexed multi-photo slots.
+// Used by both Storage.stats() (for size counting) and exportFullBackup().
+async function getAllPhotoPaths() {
+  const out = [];
+  const RE = /^(\d{4}-\d{2}-\d{2})_(breakfast|lunch|dinner)(?:_(\d+))?$/;
+  if (CAP) {
+    try {
+      const {files} = await FS.readdir({path:'photos', directory:Dir});
+      for (const f of files) {
+        const n = (typeof f==='string'?f:f.name).replace(/\.jpg$/i,'');
+        const m = n.match(RE);
+        if (m) out.push({date:m[1], meal:m[2], idx: m[3]!=null ? parseInt(m[3]) : null});
+      }
+    } catch(_) {}
+  } else {
+    // Web: cursor over IndexedDB keto-photos store
+    try {
+      const db = await new Promise((res,rej)=>{
+        const r=indexedDB.open('keto-photos',1);
+        r.onupgradeneeded=e=>e.target.result.createObjectStore('photos');
+        r.onsuccess=e=>res(e.target.result); r.onerror=rej;
+      });
+      await new Promise((res,rej)=>{
+        const tx=db.transaction('photos','readonly');
+        const req=tx.objectStore('photos').openCursor();
+        req.onsuccess=e=>{
+          const cur=e.target.result; if(!cur){res();return;}
+          const m=cur.primaryKey.match(RE);
+          if(m)out.push({date:m[1],meal:m[2],idx:m[3]!=null?parseInt(m[3]):null});
+          cur.continue();
+        };
+        req.onerror=rej;
+      });
+    } catch(_) {}
+  }
+  return out;
+}
+
 // ── THEME ────────────────────────────────────────────────────────────────────
 const THEMES=[
   {id:'midnight',name:'Midnight',emoji:'🌑',dark:true, bg:'#060d18',bar:'#0a1628'},
@@ -758,33 +925,73 @@ async function exportAll(){
   const data=Object.fromEntries(keys.map((k,i)=>[k,entries[i]]));
   await exportToDownloads(data,'keto-all-data-'+todayKey()+'.json');
 }
-// exportToDownloads: writes to the public Downloads folder on Android via
-// Capacitor Filesystem; falls back to a web anchor download on plain browser.
-async function exportToDownloads(obj,fname){
-  if(!CAP){dlJSON(obj,fname);return;}
+// Low-level: export any Blob to the Downloads folder (native) or trigger an
+// anchor download (web).  Returns true if the file was saved to Downloads,
+// false if the web fallback was used.  Does NOT show a success toast.
+async function exportBlobToDownloads(blob,fname){
+  if(!CAP){_dlBlob(blob,fname);return false;}
   try{
     // Check / request WRITE_EXTERNAL_STORAGE (required only on Android ≤ 9)
     const perm=await FS.checkPermissions().catch(()=>({publicStorage:'granted'}));
     if(perm.publicStorage!=='granted'){
       const req=await FS.requestPermissions().catch(()=>({publicStorage:'denied'}));
-      if(req.publicStorage!=='granted'){
-        toast('Storage permission denied — file not saved',true);
-        return;
-      }
+      if(req.publicStorage!=='granted'){toast('Storage permission denied — file not saved',true);return false;}
     }
-    await FS.writeFile({path:fname,directory:'DOWNLOADS',data:JSON.stringify(obj,null,2),encoding:'utf8'});
-    toast('Saved to Downloads ✓');
+    // Convert Blob → base64 for the Capacitor Filesystem bridge
+    const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(blob);});
+    await FS.writeFile({path:fname,directory:'DOWNLOADS',data:b64});
+    return true;
   }catch(e){
-    console.error('exportToDownloads failed:',e);
-    // Fall back to web-style download (triggers share sheet on some Android configs)
-    dlJSON(obj,fname);
+    console.error('exportBlobToDownloads failed:',e);
+    _dlBlob(blob,fname); // fallback to anchor download
+    return false;
   }
 }
-function dlJSON(obj,fname){
+// Trigger a browser anchor download for any Blob.
+function _dlBlob(blob,fname){
+  const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href='data:application/json,'+encodeURIComponent(JSON.stringify(obj,null,2));
-  a.download=fname;a.click();
+  a.href=url;a.download=fname;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+// High-level: serialize a JS object as JSON, export, and show a toast.
+async function exportToDownloads(obj,fname){
+  const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+  const saved=await exportBlobToDownloads(blob,fname);
+  if(saved)toast('Saved to Downloads ✓');
+}
+function dlJSON(obj,fname){
+  _dlBlob(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),fname);
+}
+
+// Full backup: all day entries + all photos → keto-backup-YYYY-MM-DD.zip
+async function exportFullBackup(){
+  toast('Building backup…');
+  const enc=new TextEncoder();
+  // Collect day entries
+  const keys=await allKeys();
+  const dayEntries=await Promise.all(keys.map(k=>load(k)));
+  const days=Object.fromEntries(keys.map((k,i)=>[k,dayEntries[i]]));
+  const zipEntries=[
+    {path:'backup_info.json', data:enc.encode(JSON.stringify({app:'keto-tracker',version:APP_VERSION,exported:new Date().toISOString(),dayCount:keys.length},null,2))},
+    {path:'data.json',        data:enc.encode(JSON.stringify(days,null,2))}
+  ];
+  // Collect photos
+  const photoPaths=await getAllPhotoPaths();
+  for(const {date,meal,idx} of photoPaths){
+    const blob=idx===null ? await Storage.photos.get(date,meal) : await Storage.photos.getAt(date,meal,idx);
+    if(!blob)continue;
+    const suffix=idx===null?'':'_'+idx;
+    zipEntries.push({path:`photos/${date}_${meal}${suffix}.jpg`, data:new Uint8Array(await blob.arrayBuffer())});
+  }
+  // Build ZIP and export
+  const zipBlob=await _Zip.pack(zipEntries);
+  const fname=`keto-backup-${todayKey()}.zip`;
+  const saved=await exportBlobToDownloads(zipBlob,fname);
+  const summary=`${keys.length} day${keys.length!==1?'s':''}, ${photoPaths.length} photo${photoPaths.length!==1?'s':''}`;
+  toast(saved?`Backup saved to Downloads — ${summary} ✓`:`Backup ready — ${summary} ✓`);
+}
+
 // Merge imported entry into existing entry field by field.
 // Imported value only fills a field if the existing value is empty (null, '', false).
 function mergeEntries(existing,imported){
@@ -847,6 +1054,76 @@ function handleImport(e){
     e.target.value='';
   };
   r.readAsText(file);
+}
+
+// ZIP backup restore — accepts a keto-backup-*.zip file produced by exportFullBackup().
+async function handleZipImport(e){
+  const file=e.target.files[0]; e.target.value=''; if(!file)return;
+  toast('Reading backup…');
+  try{
+    const fileMap=await _Zip.unpack(file);
+    if(!fileMap.has('data.json')){toast('Not a Keto Tracker backup file',true);return;}
+
+    // Parse and validate day entries
+    const raw=JSON.parse(new TextDecoder().decode(fileMap.get('data.json')));
+    if(typeof raw!=='object'||Array.isArray(raw))throw new Error('Invalid data.json');
+    const valid={};
+    for(const[k,v]of Object.entries(raw)){
+      const dk=k.startsWith('kt_d_')?k.slice(5):k.startsWith('kt_')?k.slice(3):k;
+      if(/^\d{4}-\d{2}-\d{2}$/.test(dk)&&typeof v==='object')valid[dk]=v;
+    }
+    if(!Object.keys(valid).length){toast('No valid day entries in backup',true);return;}
+
+    const existingSet=new Set(await allKeys());
+    const newKeys=Object.keys(valid).filter(k=>!existingSet.has(k));
+    const dupKeys=Object.keys(valid).filter(k=>existingSet.has(k));
+    const photoFiles=[...fileMap.keys()].filter(p=>p.startsWith('photos/'));
+
+    const summary=`${newKeys.length} new day${newKeys.length!==1?'s':''}` +
+      (dupKeys.length?` · ${dupKeys.length} duplicate${dupKeys.length!==1?'s':''}`:'') +
+      (photoFiles.length?` · ${photoFiles.length} photo${photoFiles.length!==1?'s':''}` :'');
+    if(!confirm(`Restore backup?\n\n${summary}\n\nThis will merge into your current data.`))return;
+
+    // Duplicate handling — same three-mode flow as handleImport
+    let dupMode='skip';
+    if(dupKeys.length){
+      const wantMerge=confirm(`${dupKeys.length} day${dupKeys.length!==1?'s':''} already exist.\n\nOK → Merge (fill empty fields only)\nCancel → choose overwrite or skip`);
+      if(wantMerge){dupMode='merge';}
+      else{
+        dupMode=confirm(`Overwrite the ${dupKeys.length} duplicate day${dupKeys.length!==1?'s':''}?\n\nOK → Overwrite\nCancel → Skip`)?'overwrite':'skip';
+      }
+    }
+
+    // Write day entries
+    await Promise.all(newKeys.map(dk=>lsSetDay(dk,valid[dk])));
+    if(dupMode==='merge'){
+      const existing=await Promise.all(dupKeys.map(dk=>load(dk)));
+      await Promise.all(dupKeys.map((dk,i)=>lsSetDay(dk,mergeEntries(existing[i],valid[dk]))));
+    }else if(dupMode==='overwrite'){
+      await Promise.all(dupKeys.map(dk=>lsSetDay(dk,valid[dk])));
+    }
+
+    // Restore photos — filename format: photos/YYYY-MM-DD_meal[_idx].jpg
+    const RE=/^photos\/(\d{4}-\d{2}-\d{2})_(breakfast|lunch|dinner)(?:_(\d+))?\.jpg$/i;
+    let photoCount=0;
+    for(const p of photoFiles){
+      const m=p.match(RE); if(!m)continue;
+      const [,date,meal,idxStr]=m;
+      const idx=idxStr!=null?parseInt(idxStr):null;
+      const blob=new Blob([fileMap.get(p)],{type:'image/jpeg'});
+      if(idx===null)await Storage.photos.save(date,meal,blob);
+      else await Storage.photos.saveAt(date,meal,idx,blob);
+      photoCount++;
+    }
+
+    vk=todayKey();ent=await load(vk);si=defStep(ent);render();
+    const written=newKeys.length+(dupMode!=='skip'?dupKeys.length:0);
+    toast(`Restored ${written} day${written!==1?'s':''}, ${photoCount} photo${photoCount!==1?'s':''} ✓`);
+    closeSettings();
+  }catch(err){
+    console.error('ZIP import failed:',err);
+    toast('Could not read backup file',true);
+  }
 }
 
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
@@ -916,6 +1193,13 @@ async function renderSettings(){
         <button class="set-btn set-btn-neutral" onclick="exportAll()">⬇ Export .json</button>
         <button class="set-btn set-btn-neutral" onclick="document.getElementById('fileIn').click()">⬆ Import .json</button>
       </div>
+      <div class="set-row" style="margin-top:8px">
+        <button class="set-btn set-btn-neutral" onclick="exportFullBackup()" style="flex:1">📦 Full Backup .zip</button>
+        <button class="set-btn set-btn-neutral" onclick="document.getElementById('zipIn').click()" style="flex:1">📦 Restore .zip</button>
+      </div>
+      <div class="tip-box" style="margin-top:8px;font-size:.75rem;padding:10px 12px;line-height:1.5">
+        <strong>Full Backup</strong> exports all days <em>and</em> every meal photo into a single <code>.zip</code> file. Use <strong>Restore .zip</strong> on any device to bring everything back. The <strong>.json</strong> export contains only text data (no photos) and is better for lightweight transfers.
+      </div>
     </div>
 
     <div class="set-section">
@@ -938,9 +1222,9 @@ async function renderSettings(){
     </div>
 
     <div class="tip-box">
-      💡 <strong>To move data to another device:</strong><br>
-      Use <strong>Export .json</strong> → save the file to cloud storage or email it to yourself → open the app on the new device → <strong>Import .json</strong>.<br><br>
-      ⚠️ <strong>Avoid clearing browser data</strong> — this will erase your entries. Use Export regularly as a backup.
+      💡 <strong>To move everything to another device:</strong><br>
+      Use <strong>Full Backup .zip</strong> → save to cloud or email → open on the new device → <strong>Restore .zip</strong>. This transfers all days <em>and</em> photos in one step.<br><br>
+      ⚠️ <strong>Avoid clearing app/browser data</strong> — this will erase your entries. Run a Full Backup regularly.
     </div>`;
 }
 async function doSaveSnap(){
@@ -950,7 +1234,7 @@ async function doSaveSnap(){
 }
 
 // ── VERSION ───────────────────────────────────────────────────────────────────
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 
 // ── TRACKER ──────────────────────────────────────────────────────────────────
 const STEPS=['breakfast','lunch','dinner','energy','happiness','portion','flags','notes','summary'];
