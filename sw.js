@@ -1,4 +1,4 @@
-const CACHE = 'keto-v5';
+const CACHE = 'keto-v6';
 
 const ASSETS = [
   './',
