@@ -79,6 +79,41 @@ textarea::placeholder{color:var(--txt-d)}
 .r-btn.sel .rlbl{color:var(--accent)}
 .r-btn:active{transform:scale(.94)}
 
+/* Combined ratings step */
+.ratings-block{display:flex;flex-direction:column;gap:14px}
+.rate-row-lbl{font-size:.78rem;font-weight:600;color:var(--txt-m);text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px}
+.r-grid-sm{display:flex;gap:6px}
+.r-btn-sm{flex:1;height:52px;border-radius:12px;border:2px solid var(--bd);background:var(--inp);color:var(--txt);font-size:1.05rem;font-weight:800;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:.2s;font-family:inherit}
+.r-btn-sm .rlbl{font-size:.52rem;font-weight:500;color:var(--txt-m);text-transform:uppercase;letter-spacing:.7px}
+.r-btn-sm.sel{border-color:var(--accent);background:rgba(92,184,92,.12);color:var(--accent)}
+.r-btn-sm.sel .rlbl{color:var(--accent)}
+.r-btn-sm:active{transform:scale(.94)}
+
+/* Heart health step */
+.heart-btns{display:flex;gap:8px;margin-top:4px}
+.heart-btn{flex:1;padding:18px 8px;border-radius:14px;border:2px solid var(--bd);background:var(--inp);color:var(--txt);font-size:1.5rem;font-weight:700;cursor:pointer;transition:.2s;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:6px}
+.heart-btn span{font-size:.8rem;font-weight:600;color:var(--txt-m)}
+.heart-btn:active{transform:scale(.94)}
+.heart-btn.sel-good{border-color:var(--accent);background:rgba(92,184,92,.12)}.heart-btn.sel-good span{color:var(--accent)}
+.heart-btn.sel-mild{border-color:var(--gold);background:rgba(245,200,66,.12)}.heart-btn.sel-mild span{color:var(--gold)}
+.heart-btn.sel-bad{border-color:var(--red);background:rgba(224,82,82,.12)}.heart-btn.sel-bad span{color:var(--red)}
+.heart-notes{margin-top:12px}
+
+/* Quick-select overlay */
+.qs-overlay{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
+.qs-overlay.open{transform:translateY(0)}
+.qs-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.qs-title{font-size:1.05rem;font-weight:700}
+.qs-body{flex:1;overflow-y:auto;padding:16px}
+.qs-grid{display:flex;flex-wrap:wrap;gap:10px}
+.qs-chip{padding:10px 16px;border-radius:20px;border:1.5px solid var(--bd-i);background:var(--surf);color:var(--txt);font-size:.95rem;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit}
+.qs-chip:active{background:var(--surf2);transform:scale(.95)}
+.qs-open-btn{width:100%;background:var(--surf2);border:1px solid var(--bd);color:var(--txt-m);border-radius:10px;padding:9px 14px;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s;margin-top:8px}
+.qs-open-btn:active{transform:scale(.97)}
+
+/* Meal timestamp in summary */
+.sum-time{font-size:.72rem;color:var(--txt-d);margin-left:7px;font-weight:400}
+
 .tog-list{display:flex;flex-direction:column;gap:12px}
 .tog{display:flex;align-items:center;justify-content:space-between;background:var(--inp);border:2px solid var(--bd);border-radius:14px;padding:16px 18px;cursor:pointer;transition:.2s;gap:12px}
 .tog.on-red{border-color:var(--red);background:rgba(224,82,82,.09)}
@@ -338,6 +373,14 @@ textarea::placeholder{color:var(--txt-d)}
 <div id="theme-panel">
   <div class="tp-title">Choose Theme</div>
   <div class="theme-grid" id="theme-grid"></div>
+</div>
+
+<div id="qsOverlay" class="qs-overlay">
+  <div class="qs-hdr">
+    <div class="qs-title">⚡ Quick Select</div>
+    <button class="ico-btn" onclick="closeQuickSel()">✕</button>
+  </div>
+  <div class="qs-body"><div class="qs-grid" id="qsGrid"></div></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -887,7 +930,7 @@ async function lsSetSnaps(a) {return Storage.snaps.set(a);}
 // ── DATA OPS ─────────────────────────────────────────────────────────────────
 async function load(k){
   const r=await lsGetDay(k);
-  return r||{date:k,breakfast:'',lunch:'',dinner:'',energy:null,happiness:null,portion:null,notInKeto:false,tested:false,notes:'',breakfastKeto:false,lunchKeto:false,dinnerKeto:false};
+  return r||{date:k,breakfast:'',lunch:'',dinner:'',energy:null,happiness:null,portion:null,notInKeto:false,tested:false,notes:'',breakfastKeto:false,lunchKeto:false,dinnerKeto:false,breakfastTime:null,lunchTime:null,dinnerTime:null,heart:null,heartNotes:''};
 }
 async function save(k,e){return lsSetDay(k,e);}
 async function allKeys(){return lsAllDayKeys();}
@@ -1168,6 +1211,15 @@ async function renderSettings(){
     </div>
 
     <div class="set-section">
+      <div class="set-label">Quick Select Foods</div>
+      <div class="qs-grid" style="margin-bottom:10px">${getQuickSelItems().map((f,i)=>`<span class="qs-chip" style="display:inline-flex;align-items:center;gap:6px">${f}<button onclick="removeQuickSelItem(${i})" style="background:none;border:none;color:var(--txt-d);cursor:pointer;font-size:1rem;padding:0;line-height:1;margin-left:2px">✕</button></span>`).join('')}</div>
+      <div class="set-row">
+        <input class="set-inp" id="qsAdd" placeholder="Add food…" maxlength="40">
+        <button class="set-btn set-btn-save" onclick="addQuickSelItem()">+ Add</button>
+      </div>
+    </div>
+
+    <div class="set-section">
       <div class="set-label">Image Quality</div>
       <div class="set-row">
         <button class="set-btn set-btn-neutral ${quality === 'high' ? 'active' : ''}" onclick="setQuality('high')">High</button>
@@ -1234,20 +1286,19 @@ async function doSaveSnap(){
 }
 
 // ── VERSION ───────────────────────────────────────────────────────────────────
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 
 // ── TRACKER ──────────────────────────────────────────────────────────────────
-const STEPS=['breakfast','lunch','dinner','energy','happiness','portion','flags','notes','summary'];
+const STEPS=['breakfast','lunch','dinner','ratings','heart','flags','notes','summary'];
 const META={
-  breakfast:{ic:'🍳',lbl:'Meal 1 of 3',   title:'Breakfast', sub:'What did you eat this morning?',    type:'txt'},
-  lunch:    {ic:'🥗',lbl:'Meal 2 of 3',   title:'Lunch',     sub:'What did you have for lunch?',      type:'txt'},
-  dinner:   {ic:'🍽️',lbl:'Meal 3 of 3', title:'Dinner',    sub:'What did you eat for dinner?',      type:'txt'},
-  energy:   {ic:'⚡',lbl:'Daily Check-in',title:'Energy',    sub:'How were your energy levels today?',type:'rate'},
-  happiness:{ic:'😊',lbl:'Daily Check-in',title:'Happiness', sub:'How happy did you feel today?',     type:'rate'},
-  portion:  {ic:'🍽',lbl:'Daily Check-in',title:'Portions',  sub:'How were your portion sizes?',      type:'rate'},
-  flags:    {ic:'🚩',lbl:'Daily Flags',   title:'Flags',     sub:'Anything important to note?',       type:'flags'},
-  notes:    {ic:'📝',lbl:'Optional',      title:'Notes',     sub:'Anything else on your mind?',       type:'txt'},
-  summary:  {ic:'✅',lbl:'Done!',         title:'Day Summary',sub:'',                                 type:'sum'},
+  breakfast:{ic:'🍳',lbl:'Meal 1 of 3',   title:'Breakfast',    sub:'What did you eat this morning?',         type:'txt'},
+  lunch:    {ic:'🥗',lbl:'Meal 2 of 3',   title:'Lunch',        sub:'What did you have for lunch?',           type:'txt'},
+  dinner:   {ic:'🍽️',lbl:'Meal 3 of 3', title:'Dinner',       sub:'What did you eat for dinner?',           type:'txt'},
+  ratings:  {ic:'📊',lbl:'Daily Check-in',title:'Daily Ratings',sub:'Rate your energy, mood, and portions.',  type:'ratings'},
+  heart:    {ic:'💗',lbl:'Health Check',  title:'Heart Health', sub:'How did your heart feel today?',         type:'heart'},
+  flags:    {ic:'🚩',lbl:'Daily Flags',   title:'Flags',        sub:'Anything important to note?',            type:'flags'},
+  notes:    {ic:'📝',lbl:'Optional',      title:'Notes',        sub:'Anything else on your mind?',            type:'txt'},
+  summary:  {ic:'✅',lbl:'Done!',         title:'Day Summary',  sub:'',                                       type:'sum'},
 };
 const RLBL={1:'Low',2:'Poor',3:'Okay',4:'Good',5:'Great'};
 const PLBL={1:'Tiny',2:'Small',3:'Normal',4:'Large',5:'Huge'};
@@ -1256,16 +1307,19 @@ const PH={breakfast:'2 eggs, bacon, avocado',lunch:'Grilled chicken salad',dinne
 const todayKey=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const fmtDate=k=>{const d=new Date(k+'T12:00:00');return['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+', '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getDate();};
 const offKey=(k,n)=>{const dt=new Date(k+'T12:00:00');dt.setDate(dt.getDate()+n);return dt.toISOString().slice(0,10);};
-const smartStep=()=>{const h=new Date().getHours();if(h<10)return'breakfast';if(h<14)return'lunch';if(h<20)return'dinner';return'energy';};
+const smartStep=()=>{const h=new Date().getHours();if(h<10)return'breakfast';if(h<14)return'lunch';if(h<20)return'dinner';return'ratings';};
 
 let vk=todayKey(),si=0,ent={};
 
 function defStep(e){
   if(vk!==todayKey())return STEPS.indexOf('summary');
-  const inc=STEPS.filter(s=>!['flags','notes','summary'].includes(s)).filter(s=>{
+  const isInc=s=>{
     if(['breakfast','lunch','dinner'].includes(s))return!e[s];
-    return e[s]===null;
-  });
+    if(s==='ratings')return e.energy===null||e.happiness===null||e.portion===null;
+    if(s==='heart')return e.heart===null;
+    return false;
+  };
+  const inc=STEPS.filter(s=>!['flags','notes','summary'].includes(s)).filter(isInc);
   if(!inc.length)return STEPS.indexOf('summary');
   const ss=smartStep();
   if(inc.includes(ss))return STEPS.indexOf(ss);
@@ -1291,12 +1345,23 @@ function renderStep(){
   if(step==='summary'){body=renderSum(isT,!isFut);}
   else{
     let inp='';
+    const isMealStep=['breakfast','lunch','dinner'].includes(step);
     if(m.type==='txt'){
-      const isMeal=['breakfast','lunch','dinner'].includes(step);
       inp=`<textarea id="ta" rows="4" placeholder="${PH[step]||''}" oninput="upd('${step}',this.value)">${ent[step]||''}</textarea>`;
-    }else if(m.type==='rate'){
-      const lbls=step==='portion'?PLBL:RLBL;
-      inp=`<div class="r-grid">${[1,2,3,4,5].map(n=>`<button class="r-btn${ent[step]===n?' sel':''}" onclick="selRate('${step}',${n})">${n}<span class="rlbl">${lbls[n]}</span></button>`).join('')}</div>`;
+      if(isMealStep)inp+=`<button class="qs-open-btn" onclick="openQuickSel('${step}')">⚡ Quick Select</button>`;
+    }else if(m.type==='ratings'){
+      inp=`<div class="ratings-block">
+        <div><div class="rate-row-lbl">⚡ Energy</div><div class="r-grid-sm">${[1,2,3,4,5].map(n=>`<button class="r-btn-sm${ent.energy===n?' sel':''}" onclick="pickRate('energy',${n})">${n}<span class="rlbl">${RLBL[n]}</span></button>`).join('')}</div></div>
+        <div><div class="rate-row-lbl">😊 Happiness</div><div class="r-grid-sm">${[1,2,3,4,5].map(n=>`<button class="r-btn-sm${ent.happiness===n?' sel':''}" onclick="pickRate('happiness',${n})">${n}<span class="rlbl">${RLBL[n]}</span></button>`).join('')}</div></div>
+        <div><div class="rate-row-lbl">🍽 Portions</div><div class="r-grid-sm">${[1,2,3,4,5].map(n=>`<button class="r-btn-sm${ent.portion===n?' sel':''}" onclick="pickRate('portion',${n})">${n}<span class="rlbl">${PLBL[n]}</span></button>`).join('')}</div></div>
+      </div>`;
+    }else if(m.type==='heart'){
+      inp=`<div class="heart-btns">
+        <button class="heart-btn${ent.heart==='good'?' sel-good':''}" onclick="selHeart('good')">😊<span>Good</span></button>
+        <button class="heart-btn${ent.heart==='mild'?' sel-mild':''}" onclick="selHeart('mild')">😐<span>Mild</span></button>
+        <button class="heart-btn${ent.heart==='bad'?' sel-bad':''}" onclick="selHeart('bad')">😟<span>Bad</span></button>
+      </div>
+      ${ent.heart&&ent.heart!=='good'?`<div class="heart-notes"><textarea rows="3" placeholder="Describe how your heart felt…" oninput="upd('heartNotes',this.value)">${ent.heartNotes||''}</textarea></div>`:''}`;
     }else if(m.type==='flags'){
       inp=`<div class="tog-list">
         <div class="tog${ent.notInKeto?' on-red':''}" onclick="togFlag('notInKeto')">
@@ -1308,7 +1373,6 @@ function renderStep(){
       </div>`;
     }
     const isTxt=m.type==='txt';
-    const isMealStep=['breakfast','lunch','dinner'].includes(step);
     const acts=!isFut
       ?`<div class="actions">
           ${si>0?`<button class="btn btn-back" onclick="back()">‹</button>`:''}
@@ -1327,20 +1391,27 @@ function renderStep(){
 
 function renderSum(isT,canEdit=isT){
   const e=ent;
+  const heartVal=e.heart?(()=>{
+    const label=e.heart.charAt(0).toUpperCase()+e.heart.slice(1);
+    const style=e.heart==='good'?'color:var(--accent)':e.heart==='mild'?'color:var(--gold)':'color:var(--red)';
+    const notes=e.heartNotes?`<br><span style="font-size:.82rem;font-weight:400;color:var(--txt-m)">${e.heartNotes}</span>`:'';
+    return`<span style="${style}">${label}</span>${notes}`;
+  })():null;
   const rows=[
-    {ic:'🍳',k:'Breakfast',v:e.breakfast||null,si:0,meal:'breakfast',ketoKey:'breakfastKeto'},
-    {ic:'🥗',k:'Lunch',    v:e.lunch||null,    si:1,meal:'lunch',    ketoKey:'lunchKeto'},
-    {ic:'🍽️',k:'Dinner',  v:e.dinner||null,   si:2,meal:'dinner',   ketoKey:'dinnerKeto'},
+    {ic:'🍳',k:'Breakfast',v:e.breakfast||null,si:0,meal:'breakfast',ketoKey:'breakfastKeto',time:e.breakfastTime},
+    {ic:'🥗',k:'Lunch',    v:e.lunch||null,    si:1,meal:'lunch',    ketoKey:'lunchKeto',    time:e.lunchTime},
+    {ic:'🍽️',k:'Dinner',  v:e.dinner||null,   si:2,meal:'dinner',   ketoKey:'dinnerKeto',   time:e.dinnerTime},
     {ic:'⚡',k:'Energy',   v:e.energy   ?`${e.energy}/5 — ${RLBL[e.energy]}`    :null,si:3},
-    {ic:'😊',k:'Happiness',v:e.happiness?`${e.happiness}/5 — ${RLBL[e.happiness]}`:null,si:4},
-    {ic:'🍽',k:'Portions', v:e.portion  ?`${e.portion}/5 — ${PLBL[e.portion]}`  :null,si:5},
-    {ic:'📝',k:'Notes',    v:e.notes||null,si:7},
+    {ic:'😊',k:'Happiness',v:e.happiness?`${e.happiness}/5 — ${RLBL[e.happiness]}`:null,si:3},
+    {ic:'🍽',k:'Portions', v:e.portion  ?`${e.portion}/5 — ${PLBL[e.portion]}`  :null,si:3},
+    {ic:'💗',k:'Heart',    v:heartVal,si:4},
+    {ic:'📝',k:'Notes',    v:e.notes||null,si:6},
   ];
   const badges=[];
   if(e.notInKeto)badges.push(`<span class="badge b-red">⚠️ Off Keto</span>`);
   if(e.tested)badges.push(`<span class="badge b-grn">🧪 Tested</span>`);
-  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}${r.meal?`<span id="ph-ic-${r.meal}"></span>`:''}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div>${r.ketoKey&&e[r.ketoKey]?`<span class="badge b-grn" style="font-size:.72rem;padding:2px 8px;margin-top:4px;display:inline-block">🥑 Keto</span>`:''}</div>${canEdit?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
-  const flagRow=badges.length?`<div class="sum-row"><div class="sum-ic">🚩</div><div class="sum-body"><div class="sum-key">Flags</div><div class="badges">${badges.join('')}</div></div>${canEdit?`<button class="sum-edit" onclick="editAt(6)">✏️</button>`:''}</div>`:'';
+  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}${r.meal?`<span id="ph-ic-${r.meal}"></span>`:''}${r.time?`<span class="sum-time">@ ${r.time}</span>`:''}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div>${r.ketoKey&&e[r.ketoKey]?`<span class="badge b-grn" style="font-size:.72rem;padding:2px 8px;margin-top:4px;display:inline-block">🥑 Keto</span>`:''}</div>${canEdit?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
+  const flagRow=badges.length?`<div class="sum-row"><div class="sum-ic">🚩</div><div class="sum-body"><div class="sum-key">Flags</div><div class="badges">${badges.join('')}</div></div>${canEdit?`<button class="sum-edit" onclick="editAt(5)">✏️</button>`:''}</div>`:'';
   return`<div class="card">
     <div><div class="step-lbl">${fmtDate(vk)}</div><div class="step-title">✅ ${isT?"Today's Log":"Day Summary"}</div></div>
     ${isT?`<div class="done-banner">🎉 Great job logging today!</div>`:''}
@@ -1349,8 +1420,50 @@ function renderSum(isT,canEdit=isT){
   </div>`;
 }
 
-async function upd(f,v){ent[f]=v;await save(vk,ent);}
+async function upd(f,v){
+  if(['breakfast','lunch','dinner'].includes(f)){
+    if(!ent[f]&&v){const n=new Date();ent[f+'Time']=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;}
+    else if(!v){ent[f+'Time']=null;}
+  }
+  ent[f]=v;await save(vk,ent);
+}
 async function selRate(f,v){ent[f]=v;await save(vk,ent);renderStep();setTimeout(()=>next(),380);}
+async function pickRate(f,v){ent[f]=v;await save(vk,ent);renderStep();}
+async function selHeart(v){ent.heart=v;if(v==='good')ent.heartNotes='';await save(vk,ent);if(v==='good')setTimeout(()=>next(),380);else renderStep();}
+
+// ── QUICK SELECT ──────────────────────────────────────────────────────────────
+const QS_DEFAULTS=['Eggs','Bacon','Chicken','Steak','Salmon','Avocado','Cheddar','HM Mayo','Sourdough','Broccoli','Cauliflower','Almonds','Coffee','Butter','Cream','Olive Oil'];
+let _qsMeal=null;
+function getQuickSelItems(){const s=Storage.prefs.get('quicksel');return s?JSON.parse(s):[...QS_DEFAULTS];}
+function openQuickSel(meal){
+  _qsMeal=meal;
+  document.getElementById('qsGrid').innerHTML=getQuickSelItems().map(f=>`<button class="qs-chip" onclick="appendToMeal(${JSON.stringify(f)})">${f}</button>`).join('');
+  document.getElementById('qsOverlay').classList.add('open');
+}
+function closeQuickSel(){document.getElementById('qsOverlay').classList.remove('open');}
+async function appendToMeal(food){
+  const cur=ent[_qsMeal]||'';
+  const next=cur?cur+', '+food:food;
+  await upd(_qsMeal,next);
+  const ta=document.getElementById('ta');
+  if(ta)ta.value=next;
+}
+function addQuickSelItem(){
+  const inp=document.getElementById('qsAdd');
+  const val=(inp.value||'').trim();
+  if(!val)return;
+  const items=getQuickSelItems();
+  if(!items.map(i=>i.toLowerCase()).includes(val.toLowerCase()))items.push(val);
+  Storage.prefs.set('quicksel',JSON.stringify(items));
+  inp.value='';
+  renderSettings();
+}
+function removeQuickSelItem(idx){
+  const items=getQuickSelItems();
+  items.splice(idx,1);
+  Storage.prefs.set('quicksel',JSON.stringify(items));
+  renderSettings();
+}
 async function togFlag(f){ent[f]=!ent[f];await save(vk,ent);renderStep();}
 function next(){if(si<STEPS.length-1){si++;render();}}
 function back(){if(si>0){si--;render();}}
