@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal AndroidManifest additions for Keto Tracker.
+
+  This file documents the permissions that must be present in the generated
+  android/app/src/main/AndroidManifest.xml after running `npx cap add android`.
+  Merge these <uses-permission> entries into that file.
+
+  Directory.Data  (getFilesDir) — NO permission needed on any API level.
+  Directory.Downloads             — WRITE_EXTERNAL_STORAGE needed only for
+                                    Android 9 (API 28) and below; Android 10+
+                                    uses the MediaStore API which needs no perm.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!--
+    Required only for the "Export to Downloads" feature on Android ≤ 9.
+    android:maxSdkVersion="28" ensures it is NOT requested on Android 10+.
+  -->
+  <uses-permission
+    android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+    android:maxSdkVersion="28" />
+
+  <!--
+    READ_EXTERNAL_STORAGE is not needed — we only write to Downloads, never
+    enumerate or read arbitrary external files.
+  -->
+
+</manifest>
