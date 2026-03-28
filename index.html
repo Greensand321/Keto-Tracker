@@ -105,11 +105,22 @@ textarea::placeholder{color:var(--txt-d)}
 .qs-overlay.open{transform:translateY(0)}
 .qs-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--bd);flex-shrink:0}
 .qs-title{font-size:1.05rem;font-weight:700}
+.qs-hdr-acts{display:flex;gap:6px;align-items:center}
+.qs-hdr-btn{background:var(--surf2);border:1px solid var(--bd);color:var(--txt-m);border-radius:8px;padding:5px 11px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s;letter-spacing:.3px}
+.qs-hdr-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(92,184,92,.1)}
 .qs-body{flex:1;overflow-y:auto;padding:16px}
 .qs-grid{display:flex;flex-wrap:wrap;gap:10px}
 .qs-chip{padding:10px 16px;border-radius:20px;border:1.5px solid var(--bd-i);background:var(--surf);color:var(--txt);font-size:.95rem;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit}
 .qs-chip:active{background:var(--surf2);transform:scale(.95)}
 .qs-chip.sel{border-color:var(--accent);background:rgba(92,184,92,.15);color:var(--accent)}
+.qs-list{display:flex;flex-direction:column;gap:8px}
+.qs-item{display:flex;align-items:center;gap:10px;background:var(--surf);border:1.5px solid var(--bd);border-radius:12px;padding:13px 14px;user-select:none;touch-action:pan-x}
+.qs-handle{color:var(--txt-d);font-size:1.2rem;cursor:grab;flex-shrink:0;padding:2px 4px;touch-action:none}
+.qs-item-name{flex:1;font-size:.95rem;font-weight:600}
+.qs-item-del{background:none;border:none;color:var(--txt-d);cursor:pointer;font-size:1rem;padding:4px 6px;font-family:inherit}
+.qs-item.qs-dragging{opacity:.25}
+.qs-item.qs-drag-over{border-color:var(--accent);border-style:dashed}
+.qs-add-row{display:flex;gap:8px;padding:12px 16px 16px;flex-shrink:0;border-top:1px solid var(--bd)}
 .qs-open-btn{width:100%;background:var(--surf2);border:1px solid var(--bd);color:var(--txt-m);border-radius:10px;padding:9px 14px;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s;margin-top:8px}
 .qs-open-btn:active{transform:scale(.97)}
 
@@ -379,10 +390,14 @@ textarea::placeholder{color:var(--txt-d)}
 
 <div id="qsOverlay" class="qs-overlay">
   <div class="qs-hdr">
-    <div class="qs-title">⚡ Quick Select</div>
-    <button class="ico-btn" onclick="closeQuickSel()">✕</button>
+    <div class="qs-title" id="qsTitle">⚡ Quick Select</div>
+    <div class="qs-hdr-acts">
+      <button class="qs-hdr-btn" id="qsSortBtn" onclick="toggleQsSort()">A-Z</button>
+      <button class="qs-hdr-btn" id="qsEditBtn" onclick="openQsManage()">✎ Edit</button>
+      <button class="ico-btn" onclick="closeQuickSel()">✕</button>
+    </div>
   </div>
-  <div class="qs-body"><div class="qs-grid" id="qsGrid"></div></div>
+  <div class="qs-body" id="qsBody"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1435,13 +1450,33 @@ async function selHeart(v){ent.heart=v;if(v==='good')ent.heartNotes='';await sav
 
 // ── QUICK SELECT ──────────────────────────────────────────────────────────────
 const QS_DEFAULTS=['Eggs','Bacon','Chicken','Steak','Salmon','Avocado','Cheddar','HM Mayo','Sourdough','Broccoli','Cauliflower','Almonds','Coffee','Butter','Cream','Olive Oil'];
-let _qsMeal=null,_qsSelected=new Set(),_qsBase='';
+let _qsMeal=null,_qsSelected=new Set(),_qsBase='',_qsSortAZ=false,_qsManaging=false;
+
 function getQuickSelItems(){const s=Storage.prefs.get('quicksel');return s?JSON.parse(s):[...QS_DEFAULTS];}
+function _qsEnc(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
+
+function _renderQsGrid(){
+  let items=getQuickSelItems();
+  if(_qsSortAZ)items=[...items].sort((a,b)=>a.localeCompare(b));
+  document.getElementById('qsBody').innerHTML=`<div class="qs-grid">${items.map(f=>`<button class="qs-chip${_qsSelected.has(f)?' sel':''}" data-food="${_qsEnc(f)}" onclick="toggleQsChip(this)">${f}</button>`).join('')}</div>`;
+}
+
 function openQuickSel(meal){
-  _qsMeal=meal;_qsSelected=new Set();_qsBase=ent[meal]||'';
-  document.getElementById('qsGrid').innerHTML=getQuickSelItems().map(f=>`<button class="qs-chip" data-food="${f.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="toggleQsChip(this)">${f}</button>`).join('');
+  _qsMeal=meal;_qsSelected=new Set();_qsBase=ent[meal]||'';_qsManaging=false;
+  document.getElementById('qsTitle').textContent='⚡ Quick Select';
+  document.getElementById('qsSortBtn').style.display='';
+  document.getElementById('qsEditBtn').style.display='';
+  document.getElementById('qsSortBtn').classList.toggle('active',_qsSortAZ);
+  _renderQsGrid();
   document.getElementById('qsOverlay').classList.add('open');
 }
+
+function toggleQsSort(){
+  _qsSortAZ=!_qsSortAZ;
+  document.getElementById('qsSortBtn').classList.toggle('active',_qsSortAZ);
+  _renderQsGrid();
+}
+
 function toggleQsChip(el){
   const food=el.dataset.food;
   if(_qsSelected.has(food)){_qsSelected.delete(food);el.classList.remove('sel');}
@@ -1451,28 +1486,102 @@ function toggleQsChip(el){
   const ta=document.getElementById('ta');
   if(ta)ta.value=preview;
 }
+
 async function closeQuickSel(){
-  const additions=[..._qsSelected].join(', ');
-  const next=additions?(_qsBase?_qsBase+', '+additions:additions):_qsBase;
-  if(next!==_qsBase)await upd(_qsMeal,next);
+  if(!_qsManaging){
+    const additions=[..._qsSelected].join(', ');
+    const next=additions?(_qsBase?_qsBase+', '+additions:additions):_qsBase;
+    if(next!==_qsBase)await upd(_qsMeal,next);
+  }
   _qsSelected=new Set();
   document.getElementById('qsOverlay').classList.remove('open');
 }
+
+// ── MANAGE MODE ───────────────────────────────────────────────────────────────
+function openQsManage(){
+  _qsManaging=true;
+  document.getElementById('qsTitle').textContent='✎ Edit Foods';
+  document.getElementById('qsSortBtn').style.display='none';
+  document.getElementById('qsEditBtn').style.display='none';
+  _renderQsManage();
+}
+
+function _renderQsManage(){
+  const items=getQuickSelItems();
+  const rows=items.map((f,i)=>`<div class="qs-item" id="qsi${i}">
+    <span class="qs-handle" ontouchstart="_tdStart(event,${i})" ontouchmove="_tdMove(event)" ontouchend="_tdEnd(event)">⠿</span>
+    <span class="qs-item-name">${f}</span>
+    <button class="qs-item-del" onclick="removeQsItem(${i})">✕</button>
+  </div>`).join('');
+  document.getElementById('qsBody').innerHTML=`
+    <div class="qs-list" id="qsList">${rows}</div>
+    <div class="qs-add-row">
+      <input class="set-inp" id="qsAddInline" placeholder="Add food…" maxlength="40" style="flex:1">
+      <button class="set-btn set-btn-save" onclick="addQsItemInline()">+ Add</button>
+    </div>`;
+}
+
+function removeQsItem(idx){
+  const items=getQuickSelItems();items.splice(idx,1);
+  Storage.prefs.set('quicksel',JSON.stringify(items));_renderQsManage();
+}
+function addQsItemInline(){
+  const inp=document.getElementById('qsAddInline');
+  const val=(inp.value||'').trim();if(!val)return;
+  const items=getQuickSelItems();
+  if(!items.map(x=>x.toLowerCase()).includes(val.toLowerCase()))items.push(val);
+  Storage.prefs.set('quicksel',JSON.stringify(items));
+  inp.value='';_renderQsManage();
+}
+// kept for Settings panel compatibility
 function addQuickSelItem(){
   const inp=document.getElementById('qsAdd');
-  const val=(inp.value||'').trim();
-  if(!val)return;
+  const val=(inp.value||'').trim();if(!val)return;
   const items=getQuickSelItems();
-  if(!items.map(i=>i.toLowerCase()).includes(val.toLowerCase()))items.push(val);
+  if(!items.map(x=>x.toLowerCase()).includes(val.toLowerCase()))items.push(val);
   Storage.prefs.set('quicksel',JSON.stringify(items));
-  inp.value='';
-  renderSettings();
+  inp.value='';renderSettings();
 }
 function removeQuickSelItem(idx){
-  const items=getQuickSelItems();
-  items.splice(idx,1);
-  Storage.prefs.set('quicksel',JSON.stringify(items));
-  renderSettings();
+  const items=getQuickSelItems();items.splice(idx,1);
+  Storage.prefs.set('quicksel',JSON.stringify(items));renderSettings();
+}
+
+// ── TOUCH DRAG ────────────────────────────────────────────────────────────────
+let _tdSrc=null,_tdSrcIdx=-1,_tdGhost=null,_tdEls=[];
+
+function _tdStart(e,idx){
+  _tdSrcIdx=idx;
+  _tdSrc=e.currentTarget.closest('.qs-item');
+  _tdEls=[...document.querySelectorAll('.qs-item')];
+  _tdSrc.classList.add('qs-dragging');
+  const r=_tdSrc.getBoundingClientRect();
+  _tdGhost=_tdSrc.cloneNode(true);
+  _tdGhost.style.cssText=`position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;pointer-events:none;z-index:300;opacity:.9;border-radius:12px;transition:none;background:var(--surf2);border:1.5px solid var(--accent)`;
+  document.body.appendChild(_tdGhost);
+  e.preventDefault();
+}
+function _tdMove(e){
+  if(!_tdGhost)return;
+  e.preventDefault();
+  const y=e.touches[0].clientY;
+  _tdGhost.style.top=(y-_tdGhost.offsetHeight/2)+'px';
+  let nearest=_tdSrcIdx,minD=Infinity;
+  _tdEls.forEach((el,i)=>{const mid=el.getBoundingClientRect().top+el.offsetHeight/2;const d=Math.abs(y-mid);if(d<minD){minD=d;nearest=i;}});
+  _tdEls.forEach((el,i)=>el.classList.toggle('qs-drag-over',i===nearest&&i!==_tdSrcIdx));
+}
+function _tdEnd(e){
+  if(!_tdGhost)return;
+  document.body.removeChild(_tdGhost);_tdGhost=null;
+  const y=e.changedTouches[0].clientY;
+  let target=_tdSrcIdx,minD=Infinity;
+  _tdEls.forEach((el,i)=>{const mid=el.getBoundingClientRect().top+el.offsetHeight/2;const d=Math.abs(y-mid);if(d<minD){minD=d;target=i;}});
+  _tdEls.forEach(el=>el.classList.remove('qs-drag-over','qs-dragging'));
+  if(target!==_tdSrcIdx){
+    const items=getQuickSelItems();const[m]=items.splice(_tdSrcIdx,1);items.splice(target,0,m);
+    Storage.prefs.set('quicksel',JSON.stringify(items));_renderQsManage();
+  }
+  _tdSrc=null;_tdSrcIdx=-1;_tdEls=[];
 }
 async function togFlag(f){ent[f]=!ent[f];await save(vk,ent);renderStep();}
 function next(){if(si<STEPS.length-1){si++;render();}}
