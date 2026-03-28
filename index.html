@@ -201,6 +201,7 @@ textarea::placeholder{color:var(--txt-d)}
 .set-btn:active{transform:scale(.95)}
 .set-btn-save{background:var(--accent);color:#fff}
 .set-btn-neutral{background:var(--surf2);border:1px solid var(--bd);color:var(--txt);flex:1}
+.set-btn-neutral.active{background:var(--accent);border-color:var(--accent);color:#fff}
 .upd-pill{background:var(--surf2);border:1px solid var(--bd);color:var(--txt-m);border-radius:20px;padding:3px 9px 3px 9px;font-size:.7rem;cursor:pointer;font-family:inherit;transition:.2s;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;vertical-align:middle;margin-left:5px;line-height:1.4}
 .upd-pill:not(:disabled):active{opacity:.7}
 .upd-pill:disabled{cursor:default}
@@ -398,9 +399,13 @@ const Storage = (() => {
   async function stats(){
     // Text: count only kt_ prefixed keys, not foreign app keys
     let textBytes=0;
-    for(let i=0;i<localStorage.length;i++){
-      const k=localStorage.key(i);
-      if(k&&k.startsWith(P))textBytes+=(k.length+(localStorage.getItem(k)||'').length)*2; // UTF-16
+    try {
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i);
+        if(k&&k.startsWith(P))textBytes+=(k.length+(localStorage.getItem(k)||'').length)*2; // UTF-16
+      }
+    } catch (e) {
+      console.error("Could not calculate text storage:", e);
     }
     const textKB=Math.round(textBytes/1024);
 
@@ -408,25 +413,39 @@ const Storage = (() => {
     let photoBytes=0,photoCount=0;
     try{
       const db=await _openDB();
-      await new Promise(res=>{
-        const req=db.transaction(_PH_ST,'readonly').objectStore(_PH_ST).openCursor();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(_PH_ST,'readonly');
+        const store = tx.objectStore(_PH_ST);
+        const req = store.openCursor();
         req.onsuccess=e=>{
           const cur=e.target.result;
-          if(!cur){res();return;}
+          if(!cur){resolve();return;}
           if(cur.value){photoBytes+=cur.value.size||0;photoCount++;}
           cur.continue();
         };
-        req.onerror=res;
+        req.onerror = e => {
+          console.error("DB cursor error:", e.target.error);
+          reject(e.target.error);
+        };
       });
-    }catch{}
+    } catch(e) {
+      console.error("Could not calculate photo storage:", e);
+    }
     const photoKB=Math.round(photoBytes/1024);
 
     // Quota: use real browser estimate, fall back to 5 MB
     let quotaKB=5120;
-    try{const est=await navigator.storage.estimate();if(est.quota)quotaKB=Math.round(est.quota/1024);}catch{}
+    try{
+      const est=await navigator.storage.estimate();
+      if(est.quota)quotaKB=Math.round(est.quota/1024);
+    } catch(e) {
+      console.error("Could not estimate storage quota:", e);
+    }
 
     const totalKB=textKB+photoKB;
-    return{textKB,photoKB,photoCount,totalKB,quotaKB,pct:Math.min(100,Math.round(totalKB/quotaKB*100))};
+    const quotaToUse = Math.max(1, quotaKB); // Avoid division by zero
+    const pct = Math.min(100, Math.round((totalKB / quotaToUse) * 100));
+    return{textKB,photoKB,photoCount,totalKB,quotaKB,pct};
   }
 
   return{day,snaps,prefs,photos,stats};
@@ -655,10 +674,18 @@ function openSettings(){
   document.getElementById('setModal').classList.add('open');
 }
 function closeSettings(){document.getElementById('setModal').classList.remove('open');}
+
+function setQuality(level) {
+  Storage.prefs.set('quality', level);
+  renderSettings(); // Re-render to show the active button
+}
+
 async function renderSettings(){
   const snaps=Storage.snaps.get();
   const st=await Storage.stats();
   const barCls=st.pct>=90?'full':st.pct>=65?'warn':'';
+  const quality = Storage.prefs.get('quality') || 'medium';
+
   document.getElementById('setBody').innerHTML=`
     <div class="set-section">
       <div class="set-label">Auto-Save</div>
@@ -675,6 +702,18 @@ async function renderSettings(){
         <div class="storage-bar-wrap"><div class="storage-bar ${barCls}" style="width:${st.pct}%"></div></div>
         <div style="font-size:.75rem;color:var(--txt-m)">${allKeys().length} days logged · ${snaps.length} snapshot${snaps.length!==1?'s':''} saved · ${st.photoCount} photo${st.photoCount!==1?'s':''} · ${st.pct}% used</div>
         <div style="font-size:.72rem;color:var(--txt-d);margin-top:3px">Text data: ${st.textKB} KB · Photos: ${st.photoKB} KB</div>
+      </div>
+    </div>
+
+    <div class="set-section">
+      <div class="set-label">Image Quality</div>
+      <div class="set-row">
+        <button class="set-btn set-btn-neutral ${quality === 'high' ? 'active' : ''}" onclick="setQuality('high')">High</button>
+        <button class="set-btn set-btn-neutral ${quality === 'medium' ? 'active' : ''}" onclick="setQuality('medium')">Medium</button>
+        <button class="set-btn set-btn-neutral ${quality === 'low' ? 'active' : ''}" onclick="setQuality('low')">Low</button>
+      </div>
+      <div class="tip-box" style="margin-top: 8px; font-size: .75rem; padding: 10px 12px; line-height: 1.5;">
+        Lower quality reduces photo size, allowing you to store more. High: ~1200px, Med: ~900px, Low: ~600px.
       </div>
     </div>
 
@@ -1011,7 +1050,26 @@ async function deleteAllMealPhotos(date, meal) {
 }
 
 // ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
-function compressImage(file, maxPx = 900, quality = 0.75) {
+function compressImage(file) {
+  const savedQuality = Storage.prefs.get('quality') || 'medium';
+  let maxPx, quality;
+
+  switch (savedQuality) {
+    case 'high':
+      maxPx = 1200;
+      quality = 0.8;
+      break;
+    case 'low':
+      maxPx = 600;
+      quality = 0.5;
+      break;
+    case 'medium':
+    default:
+      maxPx = 900;
+      quality = 0.7;
+      break;
+  }
+
   return new Promise(resolve => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -1046,8 +1104,17 @@ async function handleCamera(e) {
   try {
     const blob = await compressImage(file);
     const ok = await addMealPhoto(vk, _capMeal, blob);
-    if (ok) { loadMealPhoto(_capMeal); toast('Photo saved ✓'); }
-  } catch { toast('Could not save photo', true); }
+    if (ok) {
+      loadMealPhoto(_capMeal);
+      toast('Photo saved ✓');
+      if (document.getElementById('setModal').classList.contains('open')) {
+        renderSettings();
+      }
+    }
+  } catch(err) {
+    console.error("Failed to save photo:", err);
+    toast('Could not save photo', true);
+  }
 }
 
 // ── MEAL STEP PHOTO AREA ──────────────────────────────────────────────────────
