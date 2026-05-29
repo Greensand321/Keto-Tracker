@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the default "Midnight" web theme background (#060d18). -->
+    <color name="keto_bg">#060d18</color>
+</resources>
