@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ketotracker.ui.theme.KETO_THEMES
@@ -27,7 +28,14 @@ import com.ketotracker.ui.theme.KetoTheme
 import com.ketotracker.ui.theme.THEME_LIST
 import com.ketotracker.ui.theme.ThemeInfo
 
-/** Bottom-anchored theme picker, shown as an overlay above everything. */
+/**
+ * Bottom-anchored theme picker overlay.
+ *
+ * Layered as two independent children of a full-screen Box:
+ *   1. Scrim (behind) — tapping it closes the panel
+ *   2. Panel (in front) — pointerInput consumes all events so taps inside
+ *      never reach the scrim, while individual swatches fire their onClick.
+ */
 @Composable
 fun ThemePanel(
     currentId: String,
@@ -35,29 +43,41 @@ fun ThemePanel(
     onClose: () -> Unit,
 ) {
     val c = KetoTheme.colors
-    // Scrim
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable { onClose() },
-        contentAlignment = Alignment.BottomCenter,
-    ) {
-        // Panel — consume clicks so taps inside don't dismiss.
+
+    Box(Modifier.fillMaxSize()) {
+
+        // ── 1. Scrim ──────────────────────────────────────────────────────
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable { onClose() }
+        )
+
+        // ── 2. Panel (bottom-aligned, eats all its own touch events) ─────
         Column(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(12.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(c.bg)
                 .border(1.dp, c.bdI, RoundedCornerShape(20.dp))
-                .clickable(enabled = false) {}
+                // Consume ALL pointer events so nothing leaks to the scrim.
+                .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                KText("🎨 Themes", size = 16, color = c.gold, weight = FontWeight.Bold)
-                Box(Modifier.align(Alignment.CenterEnd).clickable { onClose() }) {
+            // Header row
+            Box(Modifier.fillMaxWidth()) {
+                KText("🎨 Themes", size = 16, color = c.gold, weight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterStart))
+                Box(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .clickable { onClose() }
+                        .padding(4.dp)
+                ) {
                     KText("✕", size = 16, color = c.txtM)
                 }
             }
@@ -69,17 +89,27 @@ fun ThemePanel(
 }
 
 @Composable
-private fun ThemeSection(title: String, themes: List<ThemeInfo>, currentId: String, onPick: (String) -> Unit) {
+private fun ThemeSection(
+    title: String,
+    themes: List<ThemeInfo>,
+    currentId: String,
+    onPick: (String) -> Unit,
+) {
     val c = KetoTheme.colors
+    val rows = (themes.size + 3) / 4
     KText(title.uppercase(), size = 11, color = c.txtM, weight = FontWeight.Bold, letterSpacing = 1.8f)
     LazyVerticalGrid(
         columns = GridCells.Fixed(4),
-        modifier = Modifier.fillMaxWidth().heightForRows(themes.size),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height((rows * 76).dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         userScrollEnabled = false,
     ) {
-        items(themes) { t -> ThemeSwatch(t, selected = t.id == currentId, onPick = onPick) }
+        items(themes) { t ->
+            ThemeSwatch(t, selected = t.id == currentId, onPick = onPick)
+        }
     }
 }
 
@@ -104,13 +134,14 @@ private fun ThemeSwatch(info: ThemeInfo, selected: Boolean, onPick: (String) -> 
                 .background(swatchBg)
                 .border(1.dp, c.bdI, RoundedCornerShape(50)),
             contentAlignment = Alignment.Center,
-        ) { KText(info.emoji, size = 14) }
-        KText(info.label, size = 10, color = if (selected) c.accent else c.txtM, weight = FontWeight.SemiBold)
+        ) {
+            KText(info.emoji, size = 14)
+        }
+        KText(
+            info.label,
+            size = 10,
+            color = if (selected) c.accent else c.txtM,
+            weight = FontWeight.SemiBold,
+        )
     }
-}
-
-// Fixed-height helper so the non-scrolling grid lays out fully inside a Column.
-private fun Modifier.heightForRows(count: Int): Modifier {
-    val rows = (count + 3) / 4
-    return this.height((rows * 72).dp)
 }

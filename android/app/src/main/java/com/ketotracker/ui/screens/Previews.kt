@@ -2,31 +2,167 @@ package com.ketotracker.ui.screens
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import com.ketotracker.data.Heart
+import com.ketotracker.data.Step
 import com.ketotracker.model.AppViewModel
 import com.ketotracker.ui.theme.KetoTracker
 
-/**
- * Android Studio design-time previews. Open this file and use the split/design
- * view to see the interface render without deploying to a device.
- *
- * Each preview just points the shared screen at a different theme id.
- */
-@Preview(name = "Midnight (dark)", showBackground = true, heightDp = 780)
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Build a VM pinned to a specific wizard step regardless of time-of-day. */
+private fun vmAt(step: Step, themeId: String = "midnight"): AppViewModel =
+    AppViewModel().apply {
+        setTheme(themeId)
+        editAt(step.ordinal)
+    }
+
+// ── All 8 Wizard Steps (Midnight dark theme) ──────────────────────────────────
+
+@Preview(name = "Step 1 — Breakfast", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
-private fun PreviewMidnight() {
-    KetoTracker(themeId = "midnight") { WizardScreen(AppViewModel()) }
+private fun PreviewBreakfast() {
+    KetoTracker("midnight") { WizardScreen(vmAt(Step.BREAKFAST)) }
 }
 
-@Preview(name = "Pearl (light)", showBackground = true, heightDp = 780)
+@Preview(name = "Step 2 — Lunch", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewLunch() {
+    KetoTracker("midnight") { WizardScreen(vmAt(Step.LUNCH)) }
+}
+
+@Preview(name = "Step 3 — Dinner", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewDinner() {
+    KetoTracker("midnight") { WizardScreen(vmAt(Step.DINNER)) }
+}
+
+@Preview(name = "Step 4 — Ratings", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewRatings() {
+    KetoTracker("midnight") { WizardScreen(vmAt(Step.RATINGS)) }
+}
+
+@Preview(name = "Step 5 — Heart Health", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewHeart() {
+    KetoTracker("midnight") { WizardScreen(vmAt(Step.HEART)) }
+}
+
+@Preview(name = "Step 6 — Flags", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewFlags() {
+    KetoTracker("midnight") { WizardScreen(vmAt(Step.FLAGS)) }
+}
+
+@Preview(name = "Step 7 — Notes", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewNotes() {
+    KetoTracker("midnight") { WizardScreen(vmAt(Step.NOTES)) }
+}
+
+@Preview(name = "Step 8 — Summary (today)", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewSummary() {
+    KetoTracker("midnight") { WizardScreen(vmAt(Step.SUMMARY)) }
+}
+
+// ── Summary with data filled in ───────────────────────────────────────────────
+
+@Preview(name = "Step 8 — Summary (with data)", showBackground = true, heightDp = 900, widthDp = 390)
+@Composable
+private fun PreviewSummaryFilled() {
+    val vm = AppViewModel().apply {
+        setTheme("midnight")
+        setMealText(com.ketotracker.data.Meal.BREAKFAST, "3 eggs, bacon, avocado")
+        setMealText(com.ketotracker.data.Meal.LUNCH, "Chicken Caesar salad")
+        setMealText(com.ketotracker.data.Meal.DINNER, "Ribeye + buttered asparagus")
+        pickRating(com.ketotracker.model.RatingField.ENERGY, 4)
+        pickRating(com.ketotracker.model.RatingField.HAPPINESS, 5)
+        pickRating(com.ketotracker.model.RatingField.PORTION, 3)
+        selectHeart(Heart.GOOD)
+        toggleTested()
+        setSupplement("Magnesium", 1)
+        setSupplement("Omega-3", 2)
+        editAt(Step.SUMMARY.ordinal)
+    }
+    KetoTracker("midnight") { WizardScreen(vm) }
+}
+
+// ── Overlays ──────────────────────────────────────────────────────────────────
+
+@Preview(name = "Overlay — Theme Picker", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewThemePicker() {
+    KetoTracker("midnight") {
+        com.ketotracker.ui.components.ThemePanel(
+            currentId = "midnight",
+            onPick = {},
+            onClose = {},
+        )
+    }
+}
+
+@Preview(name = "Overlay — Overview", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewOverview() {
+    val vm = AppViewModel()
+    KetoTracker("midnight") {
+        OverviewSheet(vm = vm, onJump = {}, onClose = {})
+    }
+}
+
+@Preview(name = "Overlay — Supplements", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewSupplements() {
+    KetoTracker("midnight") {
+        SupplementsSheet(vm = AppViewModel(), onClose = {})
+    }
+}
+
+@Preview(name = "Overlay — Quick Select", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewQuickSelect() {
+    KetoTracker("midnight") {
+        QuickSelectSheet(
+            vm = AppViewModel(),
+            meal = com.ketotracker.data.Meal.BREAKFAST,
+            onClose = {},
+        )
+    }
+}
+
+@Preview(name = "Overlay — Settings", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewSettings() {
+    KetoTracker("midnight") {
+        SettingsSheet(vm = AppViewModel(), onTheme = {}, onClose = {})
+    }
+}
+
+// ── Light themes ──────────────────────────────────────────────────────────────
+
+@Preview(name = "Theme — Pearl (light)", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
 private fun PreviewPearl() {
-    val vm = AppViewModel().apply { setTheme("pearl") }
-    KetoTracker(themeId = "pearl") { WizardScreen(vm) }
+    KetoTracker("pearl") { WizardScreen(vmAt(Step.RATINGS, "pearl")) }
 }
 
-@Preview(name = "Forest (dark)", showBackground = true, heightDp = 780)
+@Preview(name = "Theme — Blossom (light)", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewBlossom() {
+    KetoTracker("blossom") { WizardScreen(vmAt(Step.FLAGS, "blossom")) }
+}
+
+// ── Dark themes ───────────────────────────────────────────────────────────────
+
+@Preview(name = "Theme — Forest (dark)", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
 private fun PreviewForest() {
-    val vm = AppViewModel().apply { setTheme("forest") }
-    KetoTracker(themeId = "forest") { WizardScreen(vm) }
+    KetoTracker("forest") { WizardScreen(vmAt(Step.HEART, "forest")) }
+}
+
+@Preview(name = "Theme — Ember (dark)", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewEmber() {
+    KetoTracker("ember") { WizardScreen(vmAt(Step.NOTES, "ember")) }
 }
