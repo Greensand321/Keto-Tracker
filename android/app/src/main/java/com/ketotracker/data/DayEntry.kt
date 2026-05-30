@@ -1,14 +1,13 @@
 package com.ketotracker.data
 
+import kotlinx.serialization.Serializable
+
 /**
- * One day's log. Field-for-field port of the web app's daily entry object
- * (see CLAUDE.md "Daily Entry Schema" plus the newer heart/supplements/time
- * fields added in index.html).
- *
- * Ratings are nullable Ints (1–5) where null means "not set", matching the JS
- * `null` default. Strings default to "" (empty = not filled). Booleans default
- * to false.
+ * One day's log. Field-for-field port of the web app's daily entry object.
+ * `@Serializable` lets kotlinx.serialization convert it to/from the JSON text
+ * column in Room. Adding new fields here (with defaults) requires no DB migration.
  */
+@Serializable
 data class DayEntry(
     val date: String,
     val breakfast: String = "",
@@ -44,6 +43,7 @@ data class DayEntry(
     }
 }
 
+@Serializable
 enum class Heart { GOOD, MILD, BAD }
 
 enum class Meal(val field: String) {

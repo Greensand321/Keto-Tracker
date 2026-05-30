@@ -63,7 +63,7 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                     SettingsRow(label = "App", value = "Keto Tracker")
                     SettingsRow(label = "Version", value = APP_VERSION)
                     SettingsRow(label = "Platform", value = "Native Android (Compose)")
-                    InfoBanner("This is the interface demo build. Data entered is stored in-memory only and resets when the app is closed. Full persistence (Room database) comes in the next milestone.")
+                    InfoBanner("Data is stored locally on this device using Room. Your log survives app restarts and updates. Themes are persisted via DataStore.")
                 }
 
                 // Theme
@@ -75,15 +75,15 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
 
                 // Data
                 SettingsSection("Data") {
-                    SettingsDivider("${vm.loggedKeys().size} day(s) logged this session")
+                    SettingsDivider("${vm.loggedKeys().size} day(s) logged")
                     SettingsButton(
                         "📋 Export Data",
-                        subtitle = "Coming in persistence milestone",
+                        subtitle = "Coming soon",
                         enabled = false,
                     ) {}
                     SettingsButton(
                         "📥 Import Data",
-                        subtitle = "Coming in persistence milestone",
+                        subtitle = "Coming soon",
                         enabled = false,
                     ) {}
                 }
@@ -92,7 +92,7 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                 SettingsSection("Backups") {
                     SettingsButton(
                         "💾 Snapshots",
-                        subtitle = "Coming in persistence milestone",
+                        subtitle = "Coming soon",
                         enabled = false,
                     ) {}
                 }
@@ -100,7 +100,7 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                 // Storage
                 SettingsSection("Storage") {
                     StorageBar(
-                        usedLabel = "Session only (in-memory)",
+                        usedLabel = "Room database (local)",
                         pct = 0f,
                     )
                 }

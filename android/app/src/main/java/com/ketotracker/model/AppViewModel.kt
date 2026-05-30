@@ -1,29 +1,31 @@
 package com.ketotracker.model
 
+import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.DayEntry
-import com.ketotracker.data.DemoRepository
 import com.ketotracker.data.Heart
 import com.ketotracker.data.Meal
 import com.ketotracker.data.Step
+import com.ketotracker.data.db.KetoDatabase
+import com.ketotracker.data.prefs.PrefsStore
+import com.ketotracker.data.repository.DayRepository
+import com.ketotracker.data.repository.FakeDayRepository
+import com.ketotracker.data.repository.IDayRepository
 import java.time.LocalTime
 
-/**
- * Holds the same three pieces of state the web app keeps as globals — the
- * viewed date (`vk`), the step index (`si`), and the in-memory entry (`ent`) —
- * but as Compose state so the UI recomposes on change. The mutate → save →
- * render cycle from index.html becomes mutate → save → (state change triggers
- * recompose) here.
- */
 class AppViewModel(
-    private val repo: DemoRepository = DemoRepository(),
+    private val repo: IDayRepository,
+    private val prefs: PrefsStore?,
 ) : ViewModel() {
 
     var themeId by mutableStateOf("midnight")
@@ -35,7 +37,11 @@ class AppViewModel(
     var stepIndex by mutableStateOf(0)
         private set
 
-    var entry by mutableStateOf(repo.load(DateUtils.todayKey()))
+    var entry by mutableStateOf(DayEntry(date = DateUtils.todayKey()))
+        private set
+
+    // All logged entries kept in memory for the overview/history screens.
+    var allEntries by mutableStateOf<Map<String, DayEntry>>(emptyMap())
         private set
 
     val step: Step get() = Step.entries[stepIndex]
@@ -43,17 +49,72 @@ class AppViewModel(
     val isFuture: Boolean get() = DateUtils.isFuture(viewedKey)
 
     init {
-        stepIndex = defStep(entry)
+        // Observe the persisted theme preference.
+        if (prefs != null) {
+            viewModelScope.launch {
+                prefs.theme.collect { id -> themeId = id }
+            }
+        }
+
+        // Keep allEntries in sync with the database (used by overview/history).
+        viewModelScope.launch {
+            repo.observeAll().collect { list ->
+                allEntries = list.associate { it.date to it }
+            }
+        }
+
+        // Load today's entry to determine the smart starting step.
+        viewModelScope.launch {
+            val today = DateUtils.todayKey()
+            val todayEntry = repo.load(today)
+            entry = todayEntry
+            stepIndex = defStep(todayEntry)
+        }
     }
 
-    fun loggedKeys(): List<String> = repo.loggedKeys()
-    fun hasEntry(key: String): Boolean = repo.hasEntry(key)
-    fun entryFor(key: String): DayEntry = repo.load(key)
+    // ── Companion: factories ─────────────────────────────────────────────────
 
-    // ── Theme ────────────────────────────────────────────────────────────
-    fun setTheme(id: String) { themeId = id }
+    companion object {
+        /** Production factory — wires Room + DataStore. */
+        fun factory(app: Application): ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val db = KetoDatabase.get(app)
+                val repo = DayRepository(db.dayEntryDao())
+                val prefs = PrefsStore(app)
+                AppViewModel(repo, prefs)
+            }
+        }
 
-    // ── Day navigation ─────────────────────────────────────────────────────
+        /** Preview factory — in-memory repo, no DataStore, seeded with demo data. */
+        fun preview(): AppViewModel {
+            val repo = FakeDayRepository()
+            val vm = AppViewModel(repo, null)
+            // Populate state synchronously so Compose Previews have data to render.
+            val today = DateUtils.todayKey()
+            vm.allEntries = repo.allSync()
+            vm.entry = repo.loadSync(today)
+            vm.stepIndex = vm.defStep(vm.entry)
+            return vm
+        }
+    }
+
+    // ── Accessors ────────────────────────────────────────────────────────────
+
+    fun loggedKeys(): List<String> = allEntries.keys.sortedDescending()
+    fun hasEntry(key: String): Boolean = allEntries.containsKey(key)
+    fun entryFor(key: String): DayEntry = allEntries[key] ?: DayEntry(date = key)
+
+    // ── Theme ────────────────────────────────────────────────────────────────
+
+    fun setTheme(id: String) {
+        themeId = id
+        if (prefs != null) {
+            viewModelScope.launch { prefs.setTheme(id) }
+        }
+    }
+
+    // ── Day navigation ────────────────────────────────────────────────────────
+
     fun goToday() = jumpTo(DateUtils.todayKey())
 
     fun changeDay(delta: Long) = jumpTo(DateUtils.offKey(viewedKey, delta))
@@ -61,21 +122,31 @@ class AppViewModel(
     fun jumpTo(key: String) {
         if (DateUtils.isFuture(key)) return
         viewedKey = key
-        entry = repo.load(key)
+        // Use the in-memory map first (instant); fall back to a DB read for safety.
+        entry = allEntries[key] ?: DayEntry(date = key)
         stepIndex = defStep(entry)
+        viewModelScope.launch {
+            val fresh = repo.load(key)
+            if (viewedKey == key) {
+                entry = fresh
+                stepIndex = defStep(fresh)
+            }
+        }
     }
 
-    // ── Step navigation ─────────────────────────────────────────────────────
+    // ── Step navigation ───────────────────────────────────────────────────────
+
     fun next() { if (stepIndex < Step.entries.lastIndex) stepIndex++ }
     fun back() { if (stepIndex > 0) stepIndex-- }
     fun skip() = next()
     fun editAt(index: Int) { stepIndex = index.coerceIn(0, Step.entries.lastIndex) }
 
-    // ── Field updates (mutate copy → save → state replace) ───────────────────
+    // ── Field updates ─────────────────────────────────────────────────────────
+
     private fun update(transform: (DayEntry) -> DayEntry) {
         val updated = transform(entry)
         entry = updated
-        repo.save(updated)
+        viewModelScope.launch { repo.save(updated) }
     }
 
     fun setMealText(meal: Meal, value: String) = update {
@@ -99,7 +170,6 @@ class AppViewModel(
 
     fun selectHeart(h: Heart) {
         update { if (h == Heart.GOOD) it.copy(heart = h, heartNotes = "") else it.copy(heart = h) }
-        // Mirror web app: selHeart('good') → setTimeout(next, 380)
         if (h == Heart.GOOD) {
             viewModelScope.launch { delay(380); next() }
         }
@@ -108,7 +178,6 @@ class AppViewModel(
     fun toggleNotInKeto() = update { it.copy(notInKeto = !it.notInKeto) }
     fun toggleTested() = update { it.copy(tested = !it.tested) }
 
-    /** Marks the meal keto (with a timestamp) and advances, like markKeto(). */
     fun markKeto(meal: Meal) {
         val now = LocalTime.now().let { "%02d:%02d".format(it.hour, it.minute) }
         update {
@@ -127,7 +196,8 @@ class AppViewModel(
         it.copy(supplements = m)
     }
 
-    // ── Smart step (defStep + smartStep ports) ───────────────────────────────
+    // ── Smart step logic ──────────────────────────────────────────────────────
+
     private fun smartStep(): Step {
         val h = LocalTime.now().hour
         return when {
@@ -147,7 +217,7 @@ class AppViewModel(
         else -> false
     }
 
-    private fun defStep(e: DayEntry): Int {
+    internal fun defStep(e: DayEntry): Int {
         if (!DateUtils.isToday(viewedKey)) return Step.SUMMARY.ordinal
         val candidates = Step.entries.filter {
             it != Step.FLAGS && it != Step.NOTES && it != Step.SUMMARY
