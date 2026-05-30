@@ -4,6 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.DayEntry
 import com.ketotracker.data.DemoRepository
@@ -94,8 +97,12 @@ class AppViewModel(
         }
     }
 
-    fun selectHeart(h: Heart) = update {
-        if (h == Heart.GOOD) it.copy(heart = h, heartNotes = "") else it.copy(heart = h)
+    fun selectHeart(h: Heart) {
+        update { if (h == Heart.GOOD) it.copy(heart = h, heartNotes = "") else it.copy(heart = h) }
+        // Mirror web app: selHeart('good') → setTimeout(next, 380)
+        if (h == Heart.GOOD) {
+            viewModelScope.launch { delay(380); next() }
+        }
     }
 
     fun toggleNotInKeto() = update { it.copy(notInKeto = !it.notInKeto) }
