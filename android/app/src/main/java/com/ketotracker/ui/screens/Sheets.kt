@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.ketotracker.ui.screens
 
 import androidx.compose.foundation.background
@@ -214,7 +216,6 @@ private val QUICK_FOODS = listOf(
 )
 
 /** Simple wrapping row of chips using FlowRow. */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun FlowChips(content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
     androidx.compose.foundation.layout.FlowRow(
