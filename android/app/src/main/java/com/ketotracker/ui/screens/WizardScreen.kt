@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -23,6 +24,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.Meal
+import com.ketotracker.data.PLACEHOLDERS
 import com.ketotracker.data.Step
 import com.ketotracker.model.AppViewModel
 import com.ketotracker.ui.components.BackButton
@@ -32,6 +34,7 @@ import com.ketotracker.ui.components.HeaderBar
 import com.ketotracker.ui.components.HeartBody
 import com.ketotracker.ui.components.KetoButton
 import com.ketotracker.ui.components.KetoCard
+import com.ketotracker.ui.components.KetoTextArea
 import com.ketotracker.ui.components.MealBody
 import com.ketotracker.ui.components.PrimaryButton
 import com.ketotracker.ui.components.RatingsBody
@@ -41,7 +44,7 @@ import com.ketotracker.ui.components.SummaryCard
 import com.ketotracker.ui.components.ThemePanel
 import com.ketotracker.ui.theme.KetoTheme
 
-private enum class Overlay { NONE, THEME, OVERVIEW, SUPPLEMENTS, QUICK_SELECT }
+private enum class Overlay { NONE, THEME, OVERVIEW, SUPPLEMENTS, QUICK_SELECT, SETTINGS }
 
 @Composable
 fun WizardScreen(vm: AppViewModel) {
@@ -56,7 +59,8 @@ fun WizardScreen(vm: AppViewModel) {
             .systemBarsPadding()
     ) {
         Column(Modifier.fillMaxSize()) {
-            // Main content (top, scrollable, grows to fill).
+
+            // ── Main scrollable content ──────────────────────────────────
             Box(
                 Modifier
                     .weight(1f)
@@ -64,8 +68,8 @@ fun WizardScreen(vm: AppViewModel) {
                     .imePadding()
                     .pointerInput(vm.stepIndex, vm.viewedKey) {
                         detectHorizontalDragGestures { _, drag ->
-                            if (drag > 18) onSwipeRight(vm)
-                            else if (drag < -18) onSwipeLeft(vm)
+                            if (drag > 40) onSwipeRight(vm)
+                            else if (drag < -40) onSwipeLeft(vm)
                         }
                     }
             ) {
@@ -79,15 +83,22 @@ fun WizardScreen(vm: AppViewModel) {
                     if (vm.step != Step.SUMMARY) {
                         Dots(currentIndex = vm.stepIndex)
                     }
-                    StepContent(
-                        vm = vm,
-                        onQuickSelect = { meal -> quickMeal = meal; overlay = Overlay.QUICK_SELECT },
-                        onSupplements = { overlay = Overlay.SUPPLEMENTS },
-                    )
+                    // key() forces a full recompose when the step changes so
+                    // stale TextFields or button states never bleed between steps.
+                    key(vm.stepIndex, vm.viewedKey) {
+                        StepContent(
+                            vm = vm,
+                            onQuickSelect = { meal ->
+                                quickMeal = meal
+                                overlay = Overlay.QUICK_SELECT
+                            },
+                            onSupplements = { overlay = Overlay.SUPPLEMENTS },
+                        )
+                    }
                 }
             }
 
-            // Header bar (bottom).
+            // ── Bottom header bar ────────────────────────────────────────
             HeaderBar(
                 dateText = if (vm.isToday) "Today" else DateUtils.fmtDate(vm.viewedKey),
                 nextEnabled = !vm.isToday,
@@ -96,15 +107,15 @@ fun WizardScreen(vm: AppViewModel) {
                 onDateClick = { overlay = Overlay.OVERVIEW },
                 onOverview = { overlay = Overlay.OVERVIEW },
                 onTheme = { overlay = Overlay.THEME },
-                onSettings = { overlay = Overlay.OVERVIEW },
+                onSettings = { overlay = Overlay.SETTINGS },
             )
         }
 
-        // ── Overlays ────────────────────────────────────────────────────────
+        // ── Overlays (drawn on top of everything) ────────────────────────
         when (overlay) {
             Overlay.THEME -> ThemePanel(
                 currentId = vm.themeId,
-                onPick = { vm.setTheme(it) },
+                onPick = { vm.setTheme(it); overlay = Overlay.NONE },
                 onClose = { overlay = Overlay.NONE },
             )
             Overlay.OVERVIEW -> OverviewSheet(
@@ -121,10 +132,17 @@ fun WizardScreen(vm: AppViewModel) {
                 meal = quickMeal ?: Meal.BREAKFAST,
                 onClose = { overlay = Overlay.NONE },
             )
+            Overlay.SETTINGS -> SettingsSheet(
+                vm = vm,
+                onTheme = { overlay = Overlay.THEME },
+                onClose = { overlay = Overlay.NONE },
+            )
             Overlay.NONE -> Unit
         }
     }
 }
+
+// ── Step content ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun StepContent(
@@ -133,6 +151,7 @@ private fun StepContent(
     onSupplements: () -> Unit,
 ) {
     val step = vm.step
+
     if (step == Step.SUMMARY) {
         SummaryCard(
             entry = vm.entry,
@@ -145,8 +164,10 @@ private fun StepContent(
     }
 
     KetoCard {
+        // Label + title — meal steps skip the label row (matching web app)
         StepHeading(step, showLabelAndSub = !step.isMeal)
 
+        // Step body
         when {
             step.isMeal -> MealBody(
                 meal = step.meal!!,
@@ -154,7 +175,10 @@ private fun StepContent(
                 onText = { vm.setMealText(step.meal!!, it) },
                 onQuickSelect = { onQuickSelect(step.meal!!) },
             )
-            step == Step.RATINGS -> RatingsBody(vm.entry) { field, value -> vm.pickRating(field, value) }
+            step == Step.RATINGS -> RatingsBody(
+                entry = vm.entry,
+                onPick = { field, value -> vm.pickRating(field, value) },
+            )
             step == Step.HEART -> HeartBody(
                 entry = vm.entry,
                 onSelect = { vm.selectHeart(it) },
@@ -166,9 +190,9 @@ private fun StepContent(
                 onToggleTested = { vm.toggleTested() },
                 onOpenSupplements = onSupplements,
             )
-            step == Step.NOTES -> com.ketotracker.ui.components.KetoTextArea(
+            step == Step.NOTES -> KetoTextArea(
                 value = vm.entry.notes,
-                placeholder = com.ketotracker.data.PLACEHOLDERS["notes"] ?: "",
+                placeholder = PLACEHOLDERS["notes"] ?: "",
                 minLines = 4,
                 onValueChange = { vm.setNotes(it) },
             )
@@ -183,7 +207,9 @@ private fun ActionRow(vm: AppViewModel) {
     val step = vm.step
     val isLastBeforeSummary = vm.stepIndex == Step.entries.size - 2
     Row(
-        Modifier.fillMaxWidth().padding(top = 4.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (vm.stepIndex > 0) BackButton { vm.back() }
@@ -196,7 +222,8 @@ private fun ActionRow(vm: AppViewModel) {
     }
 }
 
-// Swipe: left → next step (or next day on summary); right → previous.
+// ── Swipe helpers ─────────────────────────────────────────────────────────────
+
 private fun onSwipeLeft(vm: AppViewModel) {
     if (vm.step == Step.SUMMARY) vm.changeDay(1) else vm.next()
 }

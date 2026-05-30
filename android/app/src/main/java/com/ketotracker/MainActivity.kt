@@ -6,7 +6,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.ketotracker.model.AppViewModel
 import com.ketotracker.ui.screens.WizardScreen
@@ -21,11 +26,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            // The selected theme id lives in the ViewModel so it survives
-            // recomposition and config changes.
-            KetoTracker(themeId = vm.themeId) {
-                androidx.compose.foundation.layout.Box(
-                    Modifier.fillMaxSize().background(KetoTheme.colors.bg)
+            // Reading vm.themeId here inside setContent means Compose registers
+            // this block as an observer of that state. Any call to vm.setTheme()
+            // re-runs this entire lambda, wrapping everything in the new theme.
+            val themeId = vm.themeId
+
+            KetoTracker(themeId = themeId) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(KetoTheme.colors.bg)
                 ) {
                     WizardScreen(vm)
                 }
