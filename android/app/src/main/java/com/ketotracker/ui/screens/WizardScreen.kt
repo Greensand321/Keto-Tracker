@@ -67,10 +67,16 @@ fun WizardScreen(vm: AppViewModel) {
                     .fillMaxWidth()
                     .imePadding()
                     .pointerInput(vm.stepIndex, vm.viewedKey) {
-                        detectHorizontalDragGestures { _, drag ->
-                            if (drag > 40) onSwipeRight(vm)
-                            else if (drag < -40) onSwipeLeft(vm)
-                        }
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart  = { totalDrag = 0f },
+                            onDragCancel = { totalDrag = 0f },
+                            onDragEnd = {
+                                if (totalDrag >  50) onSwipeRight(vm)
+                                else if (totalDrag < -50) onSwipeLeft(vm)
+                            },
+                            onHorizontalDrag = { _, amount -> totalDrag += amount },
+                        )
                     }
             ) {
                 Column(
@@ -163,7 +169,7 @@ private fun StepContent(
         return
     }
 
-    KetoCard {
+    KetoCard(compact = step.isMeal) {
         // Label + title — meal steps skip the label row (matching web app)
         StepHeading(step, showLabelAndSub = !step.isMeal)
 

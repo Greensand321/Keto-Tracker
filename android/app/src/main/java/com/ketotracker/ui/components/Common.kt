@@ -23,9 +23,19 @@ import androidx.compose.ui.unit.sp
 import com.ketotracker.data.Step
 import com.ketotracker.ui.theme.KetoTheme
 
-/** The `.card` surface: rounded, bordered, translucent. */
+/**
+ * The `.card` surface: rounded, bordered, translucent.
+ *
+ * [compact] mirrors the web app's `.card-meal` variant:
+ *   - padding: 14px vertical / 18px horizontal  (vs 24/20 for normal)
+ *   - gap:     9dp between children              (vs 18dp for normal)
+ */
 @Composable
-fun KetoCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun KetoCard(
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    content: @Composable () -> Unit,
+) {
     val c = KetoTheme.colors
     Column(
         modifier = modifier
@@ -33,8 +43,11 @@ fun KetoCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
             .clip(RoundedCornerShape(20.dp))
             .background(c.surf)
             .border(1.dp, c.bd, RoundedCornerShape(20.dp))
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+            .padding(
+                horizontal = if (compact) 18.dp else 20.dp,
+                vertical   = if (compact) 14.dp else 24.dp,
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 9.dp else 18.dp),
     ) { content() }
 }
 
