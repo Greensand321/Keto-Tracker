@@ -34,6 +34,7 @@ import com.ketotracker.data.Step
 import com.ketotracker.data.photo.MealPhoto
 import com.ketotracker.model.AppViewModel
 import com.ketotracker.ui.components.BackButton
+import com.ketotracker.ui.components.CalendarPanel
 import com.ketotracker.ui.components.Dots
 import com.ketotracker.ui.components.FlagsBody
 import com.ketotracker.ui.components.HeaderBar
@@ -52,7 +53,7 @@ import com.ketotracker.ui.components.SummaryCard
 import com.ketotracker.ui.components.ThemePanel
 import com.ketotracker.ui.theme.KetoTheme
 
-private enum class Overlay { NONE, THEME, OVERVIEW, SUPPLEMENTS, QUICK_SELECT, SETTINGS }
+private enum class Overlay { NONE, THEME, OVERVIEW, CALENDAR, SUPPLEMENTS, QUICK_SELECT, SETTINGS }
 
 @Composable
 fun WizardScreen(vm: AppViewModel) {
@@ -125,7 +126,7 @@ fun WizardScreen(vm: AppViewModel) {
                 nextEnabled = !vm.isToday,
                 onPrev = { vm.changeDay(-1) },
                 onNext = { vm.changeDay(1) },
-                onDateClick = { overlay = Overlay.OVERVIEW },
+                onDateClick = { overlay = Overlay.CALENDAR },
                 onOverview = { overlay = Overlay.OVERVIEW },
                 onTheme = { overlay = Overlay.THEME },
                 onSettings = { overlay = Overlay.SETTINGS },
@@ -142,6 +143,12 @@ fun WizardScreen(vm: AppViewModel) {
             Overlay.OVERVIEW -> OverviewSheet(
                 vm = vm,
                 onJump = { vm.jumpTo(it); overlay = Overlay.NONE },
+                onClose = { overlay = Overlay.NONE },
+            )
+            Overlay.CALENDAR -> CalendarPanel(
+                viewedKey = vm.viewedKey,
+                entries = vm.allEntries,
+                onSelect = { vm.jumpTo(it); overlay = Overlay.NONE },
                 onClose = { overlay = Overlay.NONE },
             )
             Overlay.SUPPLEMENTS -> SupplementsSheet(

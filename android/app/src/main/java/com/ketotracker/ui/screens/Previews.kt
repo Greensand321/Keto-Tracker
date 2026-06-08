@@ -111,6 +111,20 @@ private fun PreviewOverview() {
     }
 }
 
+@Preview(name = "Overlay — Calendar", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewCalendar() {
+    val vm = AppViewModel.preview()
+    KetoTracker("midnight") {
+        com.ketotracker.ui.components.CalendarPanel(
+            viewedKey = vm.viewedKey,
+            entries = vm.allEntries,
+            onSelect = {},
+            onClose = {},
+        )
+    }
+}
+
 @Preview(name = "Overlay — Supplements", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
 private fun PreviewSupplements() {
