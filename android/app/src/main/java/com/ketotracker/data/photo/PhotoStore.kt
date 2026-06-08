@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,18 +45,24 @@ class PhotoStore(context: Context) {
     }
 
     /**
-     * Compresses the image at [uri] (e.g. a freshly-captured camera photo) and
-     * stores it as a new slot for [date]/[meal], same as the web app's
-     * `addMealPhoto` → `compressImage` pipeline (max 900px, ~0.75 quality —
-     * see CLAUDE.md "IndexedDB (photo store)").
+     * Compresses a freshly-captured photo ([CaptureTarget.file]) and stores it
+     * as a new slot for [date]/[meal], same as the web app's `addMealPhoto` →
+     * `compressImage` pipeline (max 900px, ~0.75 quality — see CLAUDE.md
+     * "IndexedDB (photo store)"). Always deletes [capture] when done — it's a
+     * full-resolution temp file that's no longer needed either way (see
+     * `CameraCapture.kt` for why this matters).
      */
-    suspend fun addFromUri(context: Context, date: String, meal: String, uri: Uri): PhotoSaveResult =
+    suspend fun addFromCapture(date: String, meal: String, capture: File): PhotoSaveResult =
         withContext(Dispatchers.IO) {
-            if (listPhotos(date, meal).size >= MAX_MEAL_PHOTOS) return@withContext PhotoSaveResult.LIMIT_REACHED
-            val bytes = compress(context, uri) ?: return@withContext PhotoSaveResult.FAILED
-            val file = File(dir, "${prefix(date, meal)}${System.currentTimeMillis()}.jpg")
-            runCatching { file.writeBytes(bytes) }
-                .fold({ PhotoSaveResult.SAVED }, { PhotoSaveResult.FAILED })
+            try {
+                if (listPhotos(date, meal).size >= MAX_MEAL_PHOTOS) return@withContext PhotoSaveResult.LIMIT_REACHED
+                val bytes = compress(capture) ?: return@withContext PhotoSaveResult.FAILED
+                val file = File(dir, "${prefix(date, meal)}${System.currentTimeMillis()}.jpg")
+                runCatching { file.writeBytes(bytes) }
+                    .fold({ PhotoSaveResult.SAVED }, { PhotoSaveResult.FAILED })
+            } finally {
+                capture.delete()
+            }
         }
 
     suspend fun delete(photo: MealPhoto) = withContext(Dispatchers.IO) {
@@ -72,21 +77,19 @@ class PhotoStore(context: Context) {
 
     // ── Compression: decode → EXIF-correct → downscale → JPEG-encode ─────────
 
-    private fun compress(context: Context, uri: Uri): ByteArray? = runCatching {
-        val resolver = context.contentResolver
+    private fun compress(file: File): ByteArray? = runCatching {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: return null
+        file.inputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
 
         var sample = 1
         while (bounds.outWidth / (sample * 2) >= MAX_DIMENSION_PX && bounds.outHeight / (sample * 2) >= MAX_DIMENSION_PX) {
             sample *= 2
         }
-        val decoded = resolver.openInputStream(uri)?.use {
+        val decoded = file.inputStream().use {
             BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
         } ?: return null
 
-        val oriented = rotateToUpright(resolver.openInputStream(uri)?.use { ExifInterface(it) }, decoded)
+        val oriented = rotateToUpright(file.inputStream().use { ExifInterface(it) }, decoded)
         val scaled = scaleDown(oriented, MAX_DIMENSION_PX)
 
         ByteArrayOutputStream().use { out ->

@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -33,6 +34,7 @@ import com.ketotracker.data.prefs.PrefsStore
 import com.ketotracker.data.repository.DayRepository
 import com.ketotracker.data.repository.FakeDayRepository
 import com.ketotracker.data.repository.IDayRepository
+import java.io.File
 import java.time.LocalTime
 
 class AppViewModel(
@@ -264,23 +266,39 @@ class AppViewModel(
         }
     }
 
+    // Cancelled/replaced whenever the user picks a different heart before the
+    // delayed advance fires — otherwise tapping "Good" then quickly switching
+    // to "Mild"/"Bad" still auto-advances the wizard past the now-selected
+    // (non-Good) choice, which should require an explicit "Next" tap.
+    private var heartAdvanceJob: Job? = null
+
     fun selectHeart(h: Heart) {
+        heartAdvanceJob?.cancel()
+        heartAdvanceJob = null
         update { if (h == Heart.GOOD) it.copy(heart = h, heartNotes = "") else it.copy(heart = h) }
         if (h == Heart.GOOD) {
-            viewModelScope.launch { delay(380); next() }
+            heartAdvanceJob = viewModelScope.launch { delay(380); next() }
         }
     }
 
     fun toggleNotInKeto() = update { it.copy(notInKeto = !it.notInKeto) }
     fun toggleTested() = update { it.copy(tested = !it.tested) }
 
+    /**
+     * Marks [meal] as keto and, the *first* time it's marked on today's entry,
+     * stamps it with the current time. Editing a past day (reachable via the
+     * summary's "Edit" buttons) never stamps "now" — that would record
+     * tonight's clock time as when a historical breakfast happened — and
+     * re-confirming an already-timestamped meal keeps its original time
+     * instead of overwriting it.
+     */
     fun markKeto(meal: Meal) {
-        val now = LocalTime.now().let { "%02d:%02d".format(it.hour, it.minute) }
+        val now = if (isToday) LocalTime.now().let { "%02d:%02d".format(it.hour, it.minute) } else null
         update {
             when (meal) {
-                Meal.BREAKFAST -> it.copy(breakfastKeto = true, breakfastTime = now)
-                Meal.LUNCH -> it.copy(lunchKeto = true, lunchTime = now)
-                Meal.DINNER -> it.copy(dinnerKeto = true, dinnerTime = now)
+                Meal.BREAKFAST -> it.copy(breakfastKeto = true, breakfastTime = it.breakfastTime ?: now)
+                Meal.LUNCH -> it.copy(lunchKeto = true, lunchTime = it.lunchTime ?: now)
+                Meal.DINNER -> it.copy(dinnerKeto = true, dinnerTime = it.dinnerTime ?: now)
             }
         }
         next()
@@ -306,15 +324,16 @@ class AppViewModel(
     }
 
     /**
-     * Compresses and stores the freshly-captured image at [uri] for [meal] on
+     * Compresses and stores the freshly-captured photo [file] for [meal] on
      * the day being viewed *right now* — captured before the async hop so a
      * same-second day change can't misfile the photo under the wrong date.
+     * [PhotoStore.addFromCapture] always deletes [file] when it's done with it.
      */
-    fun addPhoto(context: Context, meal: Meal, uri: Uri) {
+    fun addPhoto(meal: Meal, file: File) {
         val store = photoStore ?: return
         val date = viewedKey
         viewModelScope.launch {
-            when (store.addFromUri(context, date, meal.field, uri)) {
+            when (store.addFromCapture(date, meal.field, file)) {
                 PhotoSaveResult.SAVED -> { photoTick++; notify("Photo saved ✓") }
                 PhotoSaveResult.LIMIT_REACHED -> notify("Max $MAX_MEAL_PHOTOS photos per meal")
                 PhotoSaveResult.FAILED -> notify("Could not save photo")

@@ -1,6 +1,5 @@
 package com.ketotracker.ui.components
 
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -33,8 +32,10 @@ import coil.compose.AsyncImage
 import com.ketotracker.data.Meal
 import com.ketotracker.data.photo.MAX_MEAL_PHOTOS
 import com.ketotracker.data.photo.MealPhoto
-import com.ketotracker.data.photo.createCaptureUri
+import com.ketotracker.data.photo.CaptureTarget
+import com.ketotracker.data.photo.createCaptureTarget
 import com.ketotracker.ui.theme.KetoTheme
+import java.io.File
 
 /**
  * Photo area shown below a meal step's action row — the native counterpart of
@@ -49,16 +50,21 @@ import com.ketotracker.ui.theme.KetoTheme
 fun MealPhotoArea(
     meal: Meal,
     photos: List<MealPhoto>,
-    onCaptured: (Uri) -> Unit,
+    onCaptured: (File) -> Unit,
     onView: (MealPhoto) -> Unit,
     onRemove: (MealPhoto) -> Unit,
 ) {
     val context = LocalContext.current
-    var pendingUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCapture by remember { mutableStateOf<CaptureTarget?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        val uri = pendingUri
-        pendingUri = null
-        if (success && uri != null) onCaptured(uri)
+        val capture = pendingCapture
+        pendingCapture = null
+        if (capture != null) {
+            // Either path consumes the temp file: a successful capture is
+            // handed to PhotoStore (which deletes it once compressed), a
+            // cancelled one has nothing to compress so we delete it directly.
+            if (success) onCaptured(capture.file) else capture.file.delete()
+        }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -69,9 +75,9 @@ fun MealPhotoArea(
             label = if (photos.isEmpty()) "📷 Add Photo" else "📷 Add Another",
             enabled = photos.size < MAX_MEAL_PHOTOS,
         ) {
-            val uri = createCaptureUri(context)
-            pendingUri = uri
-            launcher.launch(uri)
+            val target = createCaptureTarget(context)
+            pendingCapture = target
+            launcher.launch(target.uri)
         }
     }
 }

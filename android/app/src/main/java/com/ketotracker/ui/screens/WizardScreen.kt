@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.Meal
@@ -198,7 +197,6 @@ private fun StepContent(
     onViewPhoto: (MealPhoto) -> Unit,
 ) {
     val step = vm.step
-    val context = LocalContext.current
 
     if (step == Step.SUMMARY) {
         SummaryCard(
@@ -256,7 +254,7 @@ private fun StepContent(
             MealPhotoArea(
                 meal = step.meal!!,
                 photos = vm.mealPhotos(step.meal!!),
-                onCaptured = { uri -> vm.addPhoto(context, step.meal!!, uri) },
+                onCaptured = { file -> vm.addPhoto(step.meal!!, file) },
                 onView = onViewPhoto,
                 onRemove = { vm.removePhoto(it) },
             )

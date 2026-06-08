@@ -17,6 +17,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -170,10 +174,34 @@ private fun SupplementChip(name: String, count: Int, onTap: () -> Unit, onClear:
 }
 
 // ── Quick-select: tap food chips to append to the meal text ──────────────────
+//
+// Selection state is tracked in its own session-scoped Set — *not* derived by
+// re-parsing the meal text on every recomposition (mirrors the web app's
+// openQuickSel/_qsSelected, index.html ~L1485). Deriving it from the text via
+// string-splitting is fragile: free-typed text containing commas parses into
+// bogus "items", a typed "2 eggs" never matches the "Eggs" chip (so tapping it
+// appends a redundant duplicate), and editing the text outside this sheet
+// silently desyncs the chips' highlighted state from what's actually there.
 @Composable
 fun QuickSelectSheet(vm: AppViewModel, meal: Meal, onClose: () -> Unit) {
     val c = KetoTheme.colors
     val title = "⚡ " + meal.field.replaceFirstChar { it.uppercase() }
+    val baseText = remember { vm.entry.mealText(meal) }
+    var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    fun toggle(food: String) {
+        selected = if (food in selected) selected - food else selected + food
+        val additions = selected.joinToString(", ")
+        vm.setMealText(
+            meal,
+            when {
+                additions.isEmpty() -> baseText
+                baseText.isEmpty() -> additions
+                else -> "$baseText, $additions"
+            },
+        )
+    }
+
     FullScreenSheet(title, onClose) {
         Column(
             Modifier.fillMaxSize().padding(18.dp),
@@ -182,13 +210,7 @@ fun QuickSelectSheet(vm: AppViewModel, meal: Meal, onClose: () -> Unit) {
             KText("Tap items to add them to this meal.", size = 13, color = c.txtM)
             FlowChips {
                 QUICK_FOODS.forEach { food ->
-                    val current = vm.entry.mealText(meal)
-                    val selected = current.split(",").map { it.trim() }.contains(food)
-                    FoodChip(food, selected) {
-                        val parts = current.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
-                        if (selected) parts.remove(food) else parts.add(food)
-                        vm.setMealText(meal, parts.joinToString(", "))
-                    }
+                    FoodChip(food, selected = food in selected) { toggle(food) }
                 }
             }
         }

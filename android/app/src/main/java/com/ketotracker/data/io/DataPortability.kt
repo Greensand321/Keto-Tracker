@@ -88,6 +88,12 @@ object DataPortability {
         dinnerTime = existing.dinnerTime ?: imported.dinnerTime,
         heart = existing.heart ?: imported.heart,
         heartNotes = existing.heartNotes.ifEmpty { imported.heartNotes },
+        // Deliberately *more correct* than the web's `mergeEntries`: the web
+        // only treats `""`/`null`/`false` as "empty" (a literal `===` check
+        // that never matches `{}`), so an empty supplements object there blocks
+        // the imported map from filling the gap. Treating `{}` as empty too —
+        // as `ifEmpty` does — is the behaviour CLAUDE.md's "field is empty"
+        // rule actually intends, so this is not a bug to be ported over.
         supplements = existing.supplements.ifEmpty { imported.supplements },
     )
 
