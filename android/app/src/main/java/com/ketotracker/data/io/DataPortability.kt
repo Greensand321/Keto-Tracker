@@ -3,9 +3,12 @@ package com.ketotracker.data.io
 import android.content.Context
 import android.net.Uri
 import com.ketotracker.data.DayEntry
+import com.ketotracker.data.DayEntrySurrogate
+import com.ketotracker.data.toSurrogate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -29,7 +32,11 @@ object DataPortability {
     }
 
     /** Flat `{ "2025-01-15": {...}, ... }` — same shape as the web app's `exportAll()` output. */
-    fun encode(entries: Map<String, DayEntry>): String = json.encodeToString(entries)
+    fun encode(entries: Map<String, DayEntry>): String =
+        json.encodeToString(
+            MapSerializer(String.serializer(), DayEntrySurrogate.serializer()),
+            entries.mapValues { it.value.toSurrogate() },
+        )
 
     /**
      * Parses a flat date-keyed JSON object, accepting keys with or without the
@@ -48,7 +55,7 @@ object DataPortability {
             val key = normalizeKey(rawKey) ?: continue
             val obj = element as? JsonObject ?: continue
             val withDate = JsonObject(obj + ("date" to JsonPrimitive(key)))
-            val entry = runCatching { json.decodeFromJsonElement(DayEntry.serializer(), withDate) }.getOrNull()
+            val entry = runCatching { json.decodeFromJsonElement(DayEntrySurrogate.serializer(), withDate).toDomain() }.getOrNull()
                 ?: continue
             result[key] = entry
         }
