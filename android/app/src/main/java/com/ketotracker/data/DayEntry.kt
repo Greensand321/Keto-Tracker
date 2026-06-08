@@ -1,13 +1,10 @@
 package com.ketotracker.data
 
-import kotlinx.serialization.Serializable
-
 /**
  * One day's log. Field-for-field port of the web app's daily entry object.
- * `@Serializable` lets kotlinx.serialization convert it to/from the JSON text
- * column in Room. Adding new fields here (with defaults) requires no DB migration.
+ * Serialization lives in [DayEntrySurrogate] — see that file for why the
+ * `@Serializable` annotation is kept off this class.
  */
-@Serializable
 data class DayEntry(
     val date: String,
     val breakfast: String = "",
@@ -25,7 +22,7 @@ data class DayEntry(
     val breakfastTime: String? = null,
     val lunchTime: String? = null,
     val dinnerTime: String? = null,
-    @Serializable(with = HeartSerializer::class) val heart: Heart? = null,
+    val heart: Heart? = null,
     val heartNotes: String = "",
     val supplements: Map<String, Int> = emptyMap(),
 ) {
