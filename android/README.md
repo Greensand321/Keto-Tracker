@@ -210,6 +210,34 @@ a single confirmation dialog.
   `@Upsert` DAO method shared with the future Snapshot-restore feature) and
   refreshes `allEntries`/`entry` in one pass.
 
+### Auto-theme & storage stats
+
+Two small features that round out Settings parity with the web app's
+"Theme System" and "Settings Modal" (CLAUDE.md).
+
+- **Auto-theme**: mirrors `kt_theme_auto`/`kt_theme_dark_auto`/
+  `kt_theme_light_auto`. `PrefsStore` persists an `autoThemeEnabled` flag plus
+  separate "night" and "light" theme IDs; `AppViewModel` exposes them and
+  `toggleAutoTheme()`/`setAutoThemeChoice()`. The actual resolution —
+  `resolveAutoTheme(darkId, lightId)`, which reads `isSystemInDarkTheme()` —
+  has to happen in Compose (ViewModels can't observe system theme), so
+  `MainActivity` picks between `vm.themeId` and the resolved auto id before
+  handing it to `KetoTracker`. `ThemePanel` relabels its two sections "🌙
+  Night Theme"/"☀️ Day Theme" and routes taps to `onPickAuto` (which updates
+  the slot in place, mirroring `renderThemeGrid()`'s auto-mode behaviour)
+  instead of applying-and-closing; an `AutoThemeToggle` row replaces the
+  web's `.auto-tog` swatch tile.
+- **Storage stats**: mirrors `getStorageStats()`. Browser storage
+  (localStorage/IndexedDB) is quota-limited around 5 MB, but native
+  app-private storage (Room + `filesDir/photos/`) isn't — so, like the web
+  app's own Capacitor/native code path, `StorageUsage.compute()` sizes the
+  Room database file directly (`context.getDatabasePath(KETO_DB_NAME)`) and
+  sums every JPEG in `PhotoStore`'s photo directory, then reports usage
+  against a fixed 512 MB display ceiling rather than a real OS limit.
+  `AppViewModel.loadStorageStats()` runs this lazily on `Dispatchers.IO` when
+  Settings opens (it touches disk, so it isn't kept continuously live), and
+  `StorageBar` renders the real total/percentage plus a day/photo breakdown.
+
 ### UI layer — Jetpack Compose
 
 - **Theming**: `KetoColors` is a data class mirroring the web app's CSS
@@ -254,8 +282,8 @@ a single confirmation dialog.
 | **Export / Import** (JSON, merge/overwrite/skip) | ✅ Done | `DataPortability` (SAF + `kotlinx.serialization`), `ImportConfirmDialog` in Settings |
 | **History chip strip** (recent-days row) | ⬜ Missing | Shown below wizard in web app |
 | **Toast / snack-bar feedback** | ✅ Done | `AppViewModel.messages` → Compose `SnackbarHost` |
-| **Auto-theme** (sync with system dark/light) | 🟡 Partial | `resolveAutoTheme()` exists but isn't wired into `PrefsStore`/`ThemePanel` |
-| **Storage usage stats** | 🟡 Partial | `StorageBar` renders but always shows 0% — no real `getStorageStats()` equivalent |
+| **Auto-theme** (sync with system dark/light) | ✅ Done | `resolveAutoTheme()` + `PrefsStore` auto-theme prefs; `ThemePanel` Night/Day sections + Auto toggle |
+| **Storage usage stats** | ✅ Done | `StorageUsage.compute()` sizes the Room DB file + photo directory; real `StorageBar` |
 | Jump to an arbitrary (unlogged) date | ✅ Done | `CalendarPanel` lets you tap any past/present day, logged or not |
 
 ---
@@ -295,7 +323,8 @@ echo "sdk.dir=/path/to/Android/sdk" > local.properties
 | `renderStep()` switch | `StepContent()` in `WizardScreen` |
 | `renderSum()` | `SummaryCard` |
 | `load()` / `save()` (localStorage) | `IDayRepository` → `DayRepository` (Room, JSON column) |
-| `kt_theme` / `kt_theme_auto` (localStorage) | `PrefsStore` (DataStore Preferences) |
+| `kt_theme` / `kt_theme_auto` / `kt_theme_dark_auto` / `kt_theme_light_auto` (localStorage) | `PrefsStore` (DataStore Preferences) |
+| `applyAutoTheme()` / `toggleAutoTheme()` | `resolveAutoTheme()` (resolves by `isSystemInDarkTheme()`) + `AppViewModel.toggleAutoTheme/setAutoThemeChoice`, applied in `MainActivity` |
 | IndexedDB photo blobs (`Storage.photos`) | `PhotoStore` — compressed JPEGs in app-private `filesDir/photos/` |
 | `compressImage()` / `openCamera()` / `handleCamera()` | `PhotoStore.addFromUri()` (EXIF-correct, downscale, JPEG-encode) + `createCaptureUri()` + `ActivityResultContracts.TakePicture()` |
 | `loadMealPhoto()` / `#photo-area` | `MealPhotoArea` (rendered below the action row on meal steps) |
@@ -304,6 +333,7 @@ echo "sdk.dir=/path/to/Android/sdk" > local.properties
 | `.cal-panel` month grid | `CalendarPanel` (`DateUtils.monthGrid()` for the 6×7 grid math) |
 | `kt__snapshots` (localStorage array) | *(not yet built — planned Room table or DataStore blob)* |
 | `exportAll()` / `handleImport()` | `DataPortability.encode/decode/merge` + `AppViewModel.exportAll/importFrom/confirmImport`, via `CreateDocument`/`OpenDocument` (SAF) |
+| `getStorageStats()` | `StorageUsage.compute()` — sizes the Room DB file + walks `PhotoStore`'s photo directory |
 | Service worker / offline cache | Not needed — native app is offline by default |
 | `toast()` | `AppViewModel.messages` (`Channel<String>`) → Compose `SnackbarHost` |
 
@@ -312,6 +342,4 @@ echo "sdk.dir=/path/to/Android/sdk" > local.properties
 ## Suggested next steps (in priority order)
 
 1. **Snapshots** — same shape as export/import; up to 25 named backups (Room table or DataStore blob). Can reuse `IDayRepository.saveAll()` for restore.
-2. **Auto-theme wiring** — extend `PrefsStore` with dark/light preferences + auto toggle; `resolveAutoTheme()` already exists.
-3. **History chip strip** — small UI addition below the wizard, data already in `allEntries`.
-4. **Real storage stats** — query Room row count/size estimate for the Settings storage bar.
+2. **History chip strip** — small UI addition below the wizard, data already in `allEntries`.

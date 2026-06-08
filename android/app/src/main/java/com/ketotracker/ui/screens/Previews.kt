@@ -97,7 +97,12 @@ private fun PreviewThemePicker() {
     KetoTracker("midnight") {
         com.ketotracker.ui.components.ThemePanel(
             currentId = "midnight",
+            autoEnabled = false,
+            darkAutoId = "midnight",
+            lightAutoId = "pearl",
             onPick = {},
+            onPickAuto = { _, _ -> },
+            onToggleAuto = {},
             onClose = {},
         )
     }

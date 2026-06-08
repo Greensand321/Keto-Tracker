@@ -137,7 +137,12 @@ fun WizardScreen(vm: AppViewModel) {
         when (overlay) {
             Overlay.THEME -> ThemePanel(
                 currentId = vm.themeId,
+                autoEnabled = vm.autoThemeEnabled,
+                darkAutoId = vm.darkAutoThemeId,
+                lightAutoId = vm.lightAutoThemeId,
                 onPick = { vm.setTheme(it); overlay = Overlay.NONE },
+                onPickAuto = { forDark, id -> vm.setAutoThemeChoice(forDark, id) },
+                onToggleAuto = { vm.toggleAutoTheme() },
                 onClose = { overlay = Overlay.NONE },
             )
             Overlay.OVERVIEW -> OverviewSheet(

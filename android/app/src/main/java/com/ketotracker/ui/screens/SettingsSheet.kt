@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.ketotracker.data.DateUtils
+import com.ketotracker.data.io.StorageStats
 import com.ketotracker.model.AppViewModel
 import com.ketotracker.model.ImportMode
 import com.ketotracker.model.PendingImport
@@ -45,6 +47,8 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.importFrom(context, uri)
     }
+
+    LaunchedEffect(Unit) { vm.loadStorageStats(context) }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
@@ -83,7 +87,10 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
 
                 // Theme
                 SettingsSection("Appearance") {
-                    SettingsButton("🎨 Choose Theme", subtitle = "Currently: ${vm.themeId}") {
+                    SettingsButton(
+                        "🎨 Choose Theme",
+                        subtitle = if (vm.autoThemeEnabled) "Auto — follows system dark/light mode" else "Currently: ${vm.themeId}",
+                    ) {
                         onTheme()
                     }
                 }
@@ -110,10 +117,7 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
 
                 // Storage
                 SettingsSection("Storage") {
-                    StorageBar(
-                        usedLabel = "Room database (local)",
-                        pct = 0f,
-                    )
+                    StorageBar(vm.storageStats)
                 }
 
                 Spacer(Modifier.height(32.dp))
@@ -289,8 +293,14 @@ private fun InfoBanner(text: String) {
     }
 }
 
+/**
+ * Real on-device usage — native counterpart of the web app's storage bar
+ * (CLAUDE.md "Settings Modal" / `getStorageStats()`). [stats] is `null`
+ * while `loadStorageStats` is still sizing the database file and photo
+ * directory on `Dispatchers.IO`.
+ */
 @Composable
-private fun StorageBar(usedLabel: String, pct: Float) {
+private fun StorageBar(stats: StorageStats?) {
     val c = KetoTheme.colors
     Column(
         Modifier
@@ -303,7 +313,11 @@ private fun StorageBar(usedLabel: String, pct: Float) {
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             KText("Storage", size = 14, color = c.txtM)
-            KText(usedLabel, size = 13, color = c.txtD)
+            KText(
+                if (stats == null) "Calculating…" else "${formatKB(stats.totalKB)} used",
+                size = 13,
+                color = c.txtD,
+            )
         }
         // Bar track
         Box(
@@ -313,6 +327,7 @@ private fun StorageBar(usedLabel: String, pct: Float) {
                 .clip(RoundedCornerShape(3.dp))
                 .background(c.surf2)
         ) {
+            val pct = stats?.pct ?: 0f
             if (pct > 0f) {
                 Box(
                     Modifier
@@ -323,5 +338,16 @@ private fun StorageBar(usedLabel: String, pct: Float) {
                 )
             }
         }
+        if (stats != null) {
+            KText(
+                "${stats.days} day(s) logged · ${stats.photoCount} photo(s) · " +
+                    "${formatKB(stats.dbKB)} log data + ${formatKB(stats.photoKB)} photos",
+                size = 12,
+                color = c.txtD,
+            )
+        }
     }
 }
+
+private fun formatKB(kb: Int): String =
+    if (kb >= 1024) "%.1f MB".format(kb / 1024f) else "$kb KB"

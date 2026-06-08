@@ -64,6 +64,12 @@ class PhotoStore(context: Context) {
         photo.file.delete()
     }
 
+    /** Total on-disk size (bytes) and count of every stored photo — for the Settings storage stats. */
+    suspend fun usage(): Pair<Long, Int> = withContext(Dispatchers.IO) {
+        val files = dir.listFiles { f -> f.isFile && f.extension == "jpg" } ?: emptyArray()
+        files.sumOf { it.length() } to files.size
+    }
+
     // ── Compression: decode → EXIF-correct → downscale → JPEG-encode ─────────
 
     private fun compress(context: Context, uri: Uri): ByteArray? = runCatching {

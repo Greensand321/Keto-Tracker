@@ -13,6 +13,7 @@ import com.ketotracker.model.AppViewModel
 import com.ketotracker.ui.screens.WizardScreen
 import com.ketotracker.ui.theme.KetoTheme
 import com.ketotracker.ui.theme.KetoTracker
+import com.ketotracker.ui.theme.resolveAutoTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -22,7 +23,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val themeId = vm.themeId
+            val themeId = if (vm.autoThemeEnabled) {
+                resolveAutoTheme(vm.darkAutoThemeId, vm.lightAutoThemeId)
+            } else {
+                vm.themeId
+            }
 
             KetoTracker(themeId = themeId) {
                 Box(

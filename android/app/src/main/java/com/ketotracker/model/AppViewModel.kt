@@ -23,6 +23,8 @@ import com.ketotracker.data.Meal
 import com.ketotracker.data.Step
 import com.ketotracker.data.db.KetoDatabase
 import com.ketotracker.data.io.DataPortability
+import com.ketotracker.data.io.StorageStats
+import com.ketotracker.data.io.StorageUsage
 import com.ketotracker.data.photo.MAX_MEAL_PHOTOS
 import com.ketotracker.data.photo.MealPhoto
 import com.ketotracker.data.photo.PhotoSaveResult
@@ -40,6 +42,18 @@ class AppViewModel(
 ) : ViewModel() {
 
     var themeId by mutableStateOf("midnight")
+        private set
+
+    // Auto-theme — native counterpart to the web app's kt_theme_auto/
+    // kt_theme_dark_auto/kt_theme_light_auto (CLAUDE.md "Theme System"). When
+    // [autoThemeEnabled], the UI resolves the active theme from these two IDs
+    // based on the system's dark/light setting (see `resolveAutoTheme`)
+    // instead of using [themeId] directly.
+    var autoThemeEnabled by mutableStateOf(false)
+        private set
+    var darkAutoThemeId by mutableStateOf("midnight")
+        private set
+    var lightAutoThemeId by mutableStateOf("pearl")
         private set
 
     var viewedKey by mutableStateOf(DateUtils.todayKey())
@@ -83,12 +97,20 @@ class AppViewModel(
     private var pendingNewEntries: Map<String, DayEntry> = emptyMap()
     private var pendingDupEntries: Map<String, DayEntry> = emptyMap()
 
+    // Populated on demand by `loadStorageStats` — native counterpart of the
+    // web app's `getStorageStats()` (see CLAUDE.md "Data Access"). Sizing the
+    // database file and walking the photo directory does real disk I/O, so we
+    // compute it lazily when Settings opens rather than keeping it live.
+    var storageStats by mutableStateOf<StorageStats?>(null)
+        private set
+
     init {
-        // Observe the persisted theme preference.
+        // Observe the persisted theme preferences.
         if (prefs != null) {
-            viewModelScope.launch {
-                prefs.theme.collect { id -> themeId = id }
-            }
+            viewModelScope.launch { prefs.theme.collect { id -> themeId = id } }
+            viewModelScope.launch { prefs.autoThemeEnabled.collect { on -> autoThemeEnabled = on } }
+            viewModelScope.launch { prefs.darkAutoTheme.collect { id -> darkAutoThemeId = id } }
+            viewModelScope.launch { prefs.lightAutoTheme.collect { id -> lightAutoThemeId = id } }
         }
 
         // Load the full log ONCE. allEntries is then a plain in-memory cache
@@ -145,6 +167,29 @@ class AppViewModel(
         if (prefs != null) {
             viewModelScope.launch {
                 runCatching { prefs.setTheme(id) }
+                    .onFailure { reportError("Couldn't save theme choice", it) }
+            }
+        }
+    }
+
+    /** Toggles auto-theme mode — mirrors the web app's `toggleAutoTheme()`. */
+    fun toggleAutoTheme() {
+        val enabled = !autoThemeEnabled
+        autoThemeEnabled = enabled
+        if (prefs != null) {
+            viewModelScope.launch {
+                runCatching { prefs.setAutoThemeEnabled(enabled) }
+                    .onFailure { reportError("Couldn't save theme choice", it) }
+            }
+        }
+    }
+
+    /** Sets the night/day theme auto-theme switches between (CLAUDE.md "Theme System"). */
+    fun setAutoThemeChoice(forDark: Boolean, id: String) {
+        if (forDark) darkAutoThemeId = id else lightAutoThemeId = id
+        if (prefs != null) {
+            viewModelScope.launch {
+                runCatching { if (forDark) prefs.setDarkAutoTheme(id) else prefs.setLightAutoTheme(id) }
                     .onFailure { reportError("Couldn't save theme choice", it) }
             }
         }
@@ -362,6 +407,18 @@ class AppViewModel(
         pendingImport = null
         pendingNewEntries = emptyMap()
         pendingDupEntries = emptyMap()
+    }
+
+    /**
+     * Sizes the Room database file and the on-disk photo directory — native
+     * counterpart of the web app's `getStorageStats()`. Triggered when the
+     * Settings sheet opens; not kept continuously live since it touches disk.
+     */
+    fun loadStorageStats(context: Context) {
+        val store = photoStore ?: return
+        viewModelScope.launch {
+            storageStats = StorageUsage.compute(context, store, allEntries.size)
+        }
     }
 
     // ── Smart step logic ──────────────────────────────────────────────────────

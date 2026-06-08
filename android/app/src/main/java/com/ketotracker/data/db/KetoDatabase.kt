@@ -5,6 +5,9 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
+/** File name on disk — also used by `StorageStats` to size the database file directly. */
+const val KETO_DB_NAME = "keto_tracker.db"
+
 @Database(entities = [DayEntryEntity::class], version = 1, exportSchema = false)
 abstract class KetoDatabase : RoomDatabase() {
 
@@ -17,7 +20,7 @@ abstract class KetoDatabase : RoomDatabase() {
             INSTANCE ?: Room.databaseBuilder(
                 context.applicationContext,
                 KetoDatabase::class.java,
-                "keto_tracker.db",
+                KETO_DB_NAME,
             ).build().also { INSTANCE = it }
         }
     }
