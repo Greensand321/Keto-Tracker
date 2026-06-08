@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,11 +36,22 @@ import com.ketotracker.ui.theme.ThemeInfo
  *   1. Scrim (behind) — tapping it closes the panel
  *   2. Panel (in front) — pointerInput consumes all events so taps inside
  *      never reach the scrim, while individual swatches fire their onClick.
+ *
+ * Auto-theme mode (CLAUDE.md "Theme System") relabels the two sections
+ * "Night"/"Day", highlights the swatches currently assigned to each, and
+ * routes taps to [onPickAuto] instead of [onPick] — picking a swatch updates
+ * that slot in place rather than applying-and-closing, mirroring the web
+ * app's `renderThemeGrid()` auto-mode behaviour.
  */
 @Composable
 fun ThemePanel(
     currentId: String,
+    autoEnabled: Boolean,
+    darkAutoId: String,
+    lightAutoId: String,
     onPick: (String) -> Unit,
+    onPickAuto: (forDark: Boolean, id: String) -> Unit,
+    onToggleAuto: () -> Unit,
     onClose: () -> Unit,
 ) {
     val c = KetoTheme.colors
@@ -82,8 +94,15 @@ fun ThemePanel(
                 }
             }
 
-            ThemeSection("Dark", THEME_LIST.filter { it.dark }, currentId, onPick)
-            ThemeSection("Light", THEME_LIST.filter { !it.dark }, currentId, onPick)
+            if (autoEnabled) {
+                ThemeSection("🌙 Night Theme", THEME_LIST.filter { it.dark }, darkAutoId) { onPickAuto(true, it) }
+                ThemeSection("☀️ Day Theme", THEME_LIST.filter { !it.dark }, lightAutoId) { onPickAuto(false, it) }
+            } else {
+                ThemeSection("Dark", THEME_LIST.filter { it.dark }, currentId, onPick)
+                ThemeSection("Light", THEME_LIST.filter { !it.dark }, currentId, onPick)
+            }
+
+            AutoThemeToggle(enabled = autoEnabled, onToggle = onToggleAuto)
         }
     }
 }
@@ -92,7 +111,7 @@ fun ThemePanel(
 private fun ThemeSection(
     title: String,
     themes: List<ThemeInfo>,
-    currentId: String,
+    selectedId: String,
     onPick: (String) -> Unit,
 ) {
     val c = KetoTheme.colors
@@ -108,7 +127,34 @@ private fun ThemeSection(
         userScrollEnabled = false,
     ) {
         items(themes) { t ->
-            ThemeSwatch(t, selected = t.id == currentId, onPick = onPick)
+            ThemeSwatch(t, selected = t.id == selectedId, onPick = onPick)
+        }
+    }
+}
+
+/** Toggle row for auto-theme — mirrors the web app's `.auto-tog` swatch tile. */
+@Composable
+private fun AutoThemeToggle(enabled: Boolean, onToggle: () -> Unit) {
+    val c = KetoTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.surf2)
+            .border(2.dp, if (enabled) c.accent else c.bd, RoundedCornerShape(12.dp))
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        KText("🌓", size = 16)
+        Column {
+            KText("Auto theme", size = 14, color = c.txt, weight = FontWeight.SemiBold)
+            KText(
+                if (enabled) "On — follows system dark/light mode" else "Off — using a single theme everywhere",
+                size = 12,
+                color = c.txtM,
+            )
         }
     }
 }

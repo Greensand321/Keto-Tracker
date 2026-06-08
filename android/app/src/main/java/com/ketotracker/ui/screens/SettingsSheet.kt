@@ -1,5 +1,7 @@
 package com.ketotracker.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,12 +18,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import com.ketotracker.data.DateUtils
+import com.ketotracker.data.io.StorageStats
 import com.ketotracker.model.AppViewModel
+import com.ketotracker.model.ImportMode
+import com.ketotracker.model.PendingImport
 import com.ketotracker.ui.components.KText
 import com.ketotracker.ui.theme.KetoTheme
 
@@ -30,6 +39,16 @@ private const val APP_VERSION = "1.0-native-demo"
 @Composable
 fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
     val c = KetoTheme.colors
+    val context = LocalContext.current
+
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) vm.exportAll(context, uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importFrom(context, uri)
+    }
+
+    LaunchedEffect(Unit) { vm.loadStorageStats(context) }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
@@ -63,51 +82,124 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                     SettingsRow(label = "App", value = "Keto Tracker")
                     SettingsRow(label = "Version", value = APP_VERSION)
                     SettingsRow(label = "Platform", value = "Native Android (Compose)")
-                    InfoBanner("This is the interface demo build. Data entered is stored in-memory only and resets when the app is closed. Full persistence (Room database) comes in the next milestone.")
+                    InfoBanner("Data is stored locally on this device using Room. Your log survives app restarts and updates. Themes are persisted via DataStore.")
                 }
 
                 // Theme
                 SettingsSection("Appearance") {
-                    SettingsButton("🎨 Choose Theme", subtitle = "Currently: ${vm.themeId}") {
+                    SettingsButton(
+                        "🎨 Choose Theme",
+                        subtitle = if (vm.autoThemeEnabled) "Auto — follows system dark/light mode" else "Currently: ${vm.themeId}",
+                    ) {
                         onTheme()
                     }
                 }
 
                 // Data
                 SettingsSection("Data") {
-                    SettingsDivider("${vm.loggedKeys().size} day(s) logged this session")
-                    SettingsButton(
-                        "📋 Export Data",
-                        subtitle = "Coming in persistence milestone",
-                        enabled = false,
-                    ) {}
-                    SettingsButton(
-                        "📥 Import Data",
-                        subtitle = "Coming in persistence milestone",
-                        enabled = false,
-                    ) {}
+                    SettingsDivider("${vm.loggedKeys().size} day(s) logged")
+                    SettingsButton("📋 Export Data", subtitle = "Save all entries as a .json file") {
+                        exportLauncher.launch("keto-all-data-${DateUtils.todayKey()}.json")
+                    }
+                    SettingsButton("📥 Import Data", subtitle = "Merge entries from a .json file") {
+                        importLauncher.launch(arrayOf("application/json"))
+                    }
                 }
 
                 // Backups
                 SettingsSection("Backups") {
                     SettingsButton(
                         "💾 Snapshots",
-                        subtitle = "Coming in persistence milestone",
+                        subtitle = "Coming soon",
                         enabled = false,
                     ) {}
                 }
 
                 // Storage
                 SettingsSection("Storage") {
-                    StorageBar(
-                        usedLabel = "Session only (in-memory)",
-                        pct = 0f,
-                    )
+                    StorageBar(vm.storageStats)
                 }
 
                 Spacer(Modifier.height(32.dp))
             }
         }
+
+        vm.pendingImport?.let { pending ->
+            ImportConfirmDialog(
+                pending = pending,
+                onConfirm = { vm.confirmImport(it) },
+                onCancel = { vm.cancelImport() },
+            )
+        }
+    }
+}
+
+// ── Import confirmation ───────────────────────────────────────────────────────
+// Custom-styled dialog (no Material3 AlertDialog used anywhere in this codebase)
+// that collapses the web app's chained confirm() calls into one screen — see
+// CLAUDE.md "Import" for the merge/overwrite/skip semantics this mirrors.
+
+@Composable
+private fun ImportConfirmDialog(
+    pending: PendingImport,
+    onConfirm: (ImportMode) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val c = KetoTheme.colors
+    Dialog(onDismissRequest = onCancel) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(c.surf)
+                .border(1.dp, c.bdI, RoundedCornerShape(18.dp))
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            KText("📥 Import data?", size = 17, color = c.gold, weight = FontWeight.Bold)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (pending.newCount > 0) {
+                    KText("• ${pending.newCount} new day(s) will be added", size = 14, color = c.txt)
+                }
+                if (pending.dupCount > 0) {
+                    KText("• ${pending.dupCount} day(s) already exist — choose how to handle them below", size = 14, color = c.txt)
+                }
+            }
+            if (pending.dupCount > 0) {
+                DialogOption("Merge — fill empty fields only", "Existing values are kept; gaps are filled from the import") { onConfirm(ImportMode.MERGE) }
+                DialogOption("Overwrite", "Imported data replaces the existing duplicate days") { onConfirm(ImportMode.OVERWRITE) }
+                DialogOption("Skip duplicates", "Keep existing data; only add the new days") { onConfirm(ImportMode.SKIP) }
+            } else {
+                DialogOption("Import", "Add ${pending.newCount} day(s) to your log") { onConfirm(ImportMode.SKIP) }
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onCancel() }
+                    .padding(vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                KText("Cancel", size = 14, color = c.txtM, weight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogOption(title: String, subtitle: String, onClick: () -> Unit) {
+    val c = KetoTheme.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.inp)
+            .border(1.dp, c.bd, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        KText(title, size = 14, color = c.txt, weight = FontWeight.SemiBold)
+        KText(subtitle, size = 12, color = c.txtM)
     }
 }
 
@@ -201,8 +293,14 @@ private fun InfoBanner(text: String) {
     }
 }
 
+/**
+ * Real on-device usage — native counterpart of the web app's storage bar
+ * (CLAUDE.md "Settings Modal" / `getStorageStats()`). [stats] is `null`
+ * while `loadStorageStats` is still sizing the database file and photo
+ * directory on `Dispatchers.IO`.
+ */
 @Composable
-private fun StorageBar(usedLabel: String, pct: Float) {
+private fun StorageBar(stats: StorageStats?) {
     val c = KetoTheme.colors
     Column(
         Modifier
@@ -215,7 +313,11 @@ private fun StorageBar(usedLabel: String, pct: Float) {
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             KText("Storage", size = 14, color = c.txtM)
-            KText(usedLabel, size = 13, color = c.txtD)
+            KText(
+                if (stats == null) "Calculating…" else "${formatKB(stats.totalKB)} used",
+                size = 13,
+                color = c.txtD,
+            )
         }
         // Bar track
         Box(
@@ -225,6 +327,7 @@ private fun StorageBar(usedLabel: String, pct: Float) {
                 .clip(RoundedCornerShape(3.dp))
                 .background(c.surf2)
         ) {
+            val pct = stats?.pct ?: 0f
             if (pct > 0f) {
                 Box(
                     Modifier
@@ -235,5 +338,16 @@ private fun StorageBar(usedLabel: String, pct: Float) {
                 )
             }
         }
+        if (stats != null) {
+            KText(
+                "${stats.days} day(s) logged · ${stats.photoCount} photo(s) · " +
+                    "${formatKB(stats.dbKB)} log data + ${formatKB(stats.photoKB)} photos",
+                size = 12,
+                color = c.txtD,
+            )
+        }
     }
 }
+
+private fun formatKB(kb: Int): String =
+    if (kb >= 1024) "%.1f MB".format(kb / 1024f) else "$kb KB"

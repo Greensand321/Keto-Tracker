@@ -5,13 +5,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.ketotracker.data.Heart
 import com.ketotracker.data.Step
 import com.ketotracker.model.AppViewModel
+import com.ketotracker.model.RatingField
 import com.ketotracker.ui.theme.KetoTracker
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Build a VM pinned to a specific wizard step regardless of time-of-day. */
+/** Build a preview VM pinned to a specific wizard step. */
 private fun vmAt(step: Step, themeId: String = "midnight"): AppViewModel =
-    AppViewModel().apply {
+    AppViewModel.preview().apply {
         setTheme(themeId)
         editAt(step.ordinal)
     }
@@ -71,14 +72,14 @@ private fun PreviewSummary() {
 @Preview(name = "Step 8 — Summary (with data)", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewSummaryFilled() {
-    val vm = AppViewModel().apply {
+    val vm = AppViewModel.preview().apply {
         setTheme("midnight")
         setMealText(com.ketotracker.data.Meal.BREAKFAST, "3 eggs, bacon, avocado")
         setMealText(com.ketotracker.data.Meal.LUNCH, "Chicken Caesar salad")
         setMealText(com.ketotracker.data.Meal.DINNER, "Ribeye + buttered asparagus")
-        pickRating(com.ketotracker.model.RatingField.ENERGY, 4)
-        pickRating(com.ketotracker.model.RatingField.HAPPINESS, 5)
-        pickRating(com.ketotracker.model.RatingField.PORTION, 3)
+        pickRating(RatingField.ENERGY, 4)
+        pickRating(RatingField.HAPPINESS, 5)
+        pickRating(RatingField.PORTION, 3)
         selectHeart(Heart.GOOD)
         toggleTested()
         setSupplement("Magnesium", 1)
@@ -96,7 +97,12 @@ private fun PreviewThemePicker() {
     KetoTracker("midnight") {
         com.ketotracker.ui.components.ThemePanel(
             currentId = "midnight",
+            autoEnabled = false,
+            darkAutoId = "midnight",
+            lightAutoId = "pearl",
             onPick = {},
+            onPickAuto = { _, _ -> },
+            onToggleAuto = {},
             onClose = {},
         )
     }
@@ -105,9 +111,22 @@ private fun PreviewThemePicker() {
 @Preview(name = "Overlay — Overview", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
 private fun PreviewOverview() {
-    val vm = AppViewModel()
     KetoTracker("midnight") {
-        OverviewSheet(vm = vm, onJump = {}, onClose = {})
+        OverviewSheet(vm = AppViewModel.preview(), onJump = {}, onClose = {})
+    }
+}
+
+@Preview(name = "Overlay — Calendar", showBackground = true, heightDp = 780, widthDp = 390)
+@Composable
+private fun PreviewCalendar() {
+    val vm = AppViewModel.preview()
+    KetoTracker("midnight") {
+        com.ketotracker.ui.components.CalendarPanel(
+            viewedKey = vm.viewedKey,
+            entries = vm.allEntries,
+            onSelect = {},
+            onClose = {},
+        )
     }
 }
 
@@ -115,7 +134,7 @@ private fun PreviewOverview() {
 @Composable
 private fun PreviewSupplements() {
     KetoTracker("midnight") {
-        SupplementsSheet(vm = AppViewModel(), onClose = {})
+        SupplementsSheet(vm = AppViewModel.preview(), onClose = {})
     }
 }
 
@@ -124,7 +143,7 @@ private fun PreviewSupplements() {
 private fun PreviewQuickSelect() {
     KetoTracker("midnight") {
         QuickSelectSheet(
-            vm = AppViewModel(),
+            vm = AppViewModel.preview(),
             meal = com.ketotracker.data.Meal.BREAKFAST,
             onClose = {},
         )
@@ -135,7 +154,7 @@ private fun PreviewQuickSelect() {
 @Composable
 private fun PreviewSettings() {
     KetoTracker("midnight") {
-        SettingsSheet(vm = AppViewModel(), onTheme = {}, onClose = {})
+        SettingsSheet(vm = AppViewModel.preview(), onTheme = {}, onClose = {})
     }
 }
 

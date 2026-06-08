@@ -1,19 +1,21 @@
-package com.ketotracker.data
+package com.ketotracker.data.repository
+
+import com.ketotracker.data.DateUtils
+import com.ketotracker.data.DayEntry
+import com.ketotracker.data.Heart
 
 /**
- * In-memory store for the interface demo. Mirrors the web app's load()/save()
- * contract (get a day or a blank default; write a day back) so swapping in a
- * Room-backed implementation later is a drop-in change behind this interface.
- *
- * Seeded with a few recent days so the calendar, history, and summary screens
- * have something to show on first launch.
+ * In-memory repository for Compose Previews and unit tests. Seeded with two
+ * past days so the calendar, history, and summary screens have something to
+ * show on first launch.
  */
-class DemoRepository {
+class FakeDayRepository : IDayRepository {
+
     private val days = mutableMapOf<String, DayEntry>()
 
     init {
         val today = DateUtils.todayKey()
-        save(
+        listOf(
             DayEntry(
                 date = DateUtils.offKey(today, -1),
                 breakfast = "3 eggs, bacon, half an avocado",
@@ -26,9 +28,7 @@ class DemoRepository {
                 heart = Heart.GOOD,
                 supplements = mapOf("Magnesium" to 1, "Omega-3" to 2),
                 notes = "Felt great all day, steady energy.",
-            )
-        )
-        save(
+            ),
             DayEntry(
                 date = DateUtils.offKey(today, -2),
                 breakfast = "Skipped (fasting)",
@@ -39,18 +39,20 @@ class DemoRepository {
                 lunchKeto = true,
                 heart = Heart.MILD,
                 heartNotes = "Slight flutter after dinner.",
-            )
-        )
+            ),
+        ).forEach { days[it.date] = it }
     }
 
-    fun load(key: String): DayEntry = days[key] ?: DayEntry(date = key)
+    override suspend fun load(date: String): DayEntry = days[date] ?: DayEntry(date = date)
 
-    fun save(entry: DayEntry) {
-        days[entry.date] = entry
-    }
+    override suspend fun loadAll(): List<DayEntry> = days.values.sortedByDescending { it.date }
 
-    /** All logged day keys, newest first. */
-    fun loggedKeys(): List<String> = days.keys.sortedDescending()
+    override suspend fun save(entry: DayEntry) { days[entry.date] = entry }
 
-    fun hasEntry(key: String): Boolean = days.containsKey(key)
+    override suspend fun saveAll(entries: List<DayEntry>) { entries.forEach { days[it.date] = it } }
+
+    override suspend fun deleteAll() { days.clear() }
+
+    fun loadSync(date: String): DayEntry = days[date] ?: DayEntry(date = date)
+    fun allSync(): Map<String, DayEntry> = days.toMap()
 }
