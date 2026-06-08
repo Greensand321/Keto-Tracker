@@ -3,20 +3,15 @@ package com.ketotracker.data.repository
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.DayEntry
 import com.ketotracker.data.Heart
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.map
 
 /**
- * In-memory repository for Compose Previews and unit tests. Seeded with the
- * same two past days that DemoRepository used. MutableStateFlow means
- * `observeAll()` re-emits whenever a save or delete occurs, keeping previews
- * reactive even in interactive mode.
+ * In-memory repository for Compose Previews and unit tests. Seeded with two
+ * past days so the calendar, history, and summary screens have something to
+ * show on first launch.
  */
 class FakeDayRepository : IDayRepository {
 
     private val days = mutableMapOf<String, DayEntry>()
-    private val stateFlow = MutableStateFlow<Map<String, DayEntry>>(emptyMap())
 
     init {
         val today = DateUtils.todayKey()
@@ -45,25 +40,16 @@ class FakeDayRepository : IDayRepository {
                 heart = Heart.MILD,
                 heartNotes = "Slight flutter after dinner.",
             ),
-        ).forEach { put(it) }
-    }
-
-    private fun put(entry: DayEntry) {
-        days[entry.date] = entry
-        stateFlow.value = days.toMap()
+        ).forEach { days[it.date] = it }
     }
 
     override suspend fun load(date: String): DayEntry = days[date] ?: DayEntry(date = date)
 
-    override suspend fun save(entry: DayEntry) = put(entry)
+    override suspend fun loadAll(): List<DayEntry> = days.values.sortedByDescending { it.date }
 
-    override suspend fun deleteAll() {
-        days.clear()
-        stateFlow.value = emptyMap()
-    }
+    override suspend fun save(entry: DayEntry) { days[entry.date] = entry }
 
-    override fun observeAll(): Flow<List<DayEntry>> =
-        stateFlow.map { map -> map.values.sortedByDescending { it.date } }
+    override suspend fun deleteAll() { days.clear() }
 
     fun loadSync(date: String): DayEntry = days[date] ?: DayEntry(date = date)
     fun allSync(): Map<String, DayEntry> = days.toMap()

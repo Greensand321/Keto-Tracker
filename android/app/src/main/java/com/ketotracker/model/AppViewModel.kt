@@ -9,7 +9,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.DayEntry
@@ -48,6 +51,14 @@ class AppViewModel(
     val isToday: Boolean get() = DateUtils.isToday(viewedKey)
     val isFuture: Boolean get() = DateUtils.isFuture(viewedKey)
 
+    /**
+     * One-shot, user-facing error notifications (e.g. "couldn't save your entry").
+     * A Channel — not a state — so each message is delivered exactly once and
+     * doesn't replay on recomposition/rotation. The UI collects this as a Snackbar.
+     */
+    private val _errors = Channel<String>(Channel.BUFFERED)
+    val errors: Flow<String> = _errors.receiveAsFlow()
+
     init {
         // Observe the persisted theme preference.
         if (prefs != null) {
@@ -56,17 +67,15 @@ class AppViewModel(
             }
         }
 
-        // Keep allEntries in sync with the database (used by overview/history).
+        // Load the full log ONCE. allEntries is then a plain in-memory cache
+        // that `update()` keeps in sync directly — we deliberately do NOT
+        // reactively re-query+re-decode the whole table on every write (that
+        // would mean every keystroke triggers an O(total days logged) reload).
         viewModelScope.launch {
-            repo.observeAll().collect { list ->
-                allEntries = list.associate { it.date to it }
-            }
-        }
-
-        // Load today's entry to determine the smart starting step.
-        viewModelScope.launch {
+            val all = repo.loadAll().associateBy { it.date }
+            allEntries = all
             val today = DateUtils.todayKey()
-            val todayEntry = repo.load(today)
+            val todayEntry = all[today] ?: DayEntry(date = today)
             entry = todayEntry
             stepIndex = defStep(todayEntry)
         }
@@ -109,7 +118,10 @@ class AppViewModel(
     fun setTheme(id: String) {
         themeId = id
         if (prefs != null) {
-            viewModelScope.launch { prefs.setTheme(id) }
+            viewModelScope.launch {
+                runCatching { prefs.setTheme(id) }
+                    .onFailure { reportError("Couldn't save theme choice", it) }
+            }
         }
     }
 
@@ -119,19 +131,15 @@ class AppViewModel(
 
     fun changeDay(delta: Long) = jumpTo(DateUtils.offKey(viewedKey, delta))
 
+    /**
+     * allEntries is fully loaded at startup and kept in sync locally by
+     * `update()`, so every date's data is already in memory — no DB read needed.
+     */
     fun jumpTo(key: String) {
         if (DateUtils.isFuture(key)) return
         viewedKey = key
-        // Use the in-memory map first (instant); fall back to a DB read for safety.
         entry = allEntries[key] ?: DayEntry(date = key)
         stepIndex = defStep(entry)
-        viewModelScope.launch {
-            val fresh = repo.load(key)
-            if (viewedKey == key) {
-                entry = fresh
-                stepIndex = defStep(fresh)
-            }
-        }
     }
 
     // ── Step navigation ───────────────────────────────────────────────────────
@@ -143,10 +151,24 @@ class AppViewModel(
 
     // ── Field updates ─────────────────────────────────────────────────────────
 
+    /**
+     * Mutates the active entry, updates the in-memory cache immediately (so the
+     * UI and `allEntries` never disagree), then persists asynchronously. We
+     * update `allEntries` here — directly, from the value we already have —
+     * rather than re-reading the whole table after every save.
+     */
     private fun update(transform: (DayEntry) -> DayEntry) {
         val updated = transform(entry)
         entry = updated
-        viewModelScope.launch { repo.save(updated) }
+        allEntries = allEntries + (updated.date to updated)
+        viewModelScope.launch {
+            runCatching { repo.save(updated) }
+                .onFailure { reportError("Couldn't save your entry", it) }
+        }
+    }
+
+    private fun reportError(message: String, cause: Throwable) {
+        _errors.trySend("$message — ${cause.message ?: "unknown error"}")
     }
 
     fun setMealText(meal: Meal, value: String) = update {
@@ -208,7 +230,7 @@ class AppViewModel(
         }
     }
 
-    private fun isIncomplete(s: Step, e: DayEntry): Boolean = when (s) {
+    internal fun isIncomplete(s: Step, e: DayEntry): Boolean = when (s) {
         Step.BREAKFAST -> e.breakfast.isEmpty()
         Step.LUNCH -> e.lunch.isEmpty()
         Step.DINNER -> e.dinner.isEmpty()
