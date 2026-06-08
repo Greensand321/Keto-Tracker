@@ -123,7 +123,7 @@ class AppViewModel(
             val all = repo.loadAll().associateBy { it.date }
             allEntries = all
             val today = DateUtils.todayKey()
-            val todayEntry = all[today] ?: DayEntry(date = today)
+            val todayEntry = loadDateEntry(today)
             entry = todayEntry
             stepIndex = defStep(todayEntry)
         }
@@ -209,17 +209,18 @@ class AppViewModel(
      */
     fun jumpTo(key: String) {
         if (DateUtils.isFuture(key)) return
+        cancelPendingAdvance()
         viewedKey = key
-        entry = allEntries[key] ?: DayEntry(date = key)
+        entry = loadDateEntry(key)
         stepIndex = defStep(entry)
     }
 
     // ── Step navigation ───────────────────────────────────────────────────────
 
-    fun next() { if (stepIndex < Step.entries.lastIndex) stepIndex++ }
-    fun back() { if (stepIndex > 0) stepIndex-- }
+    fun next() { cancelPendingAdvance(); if (stepIndex < Step.entries.lastIndex) stepIndex++ }
+    fun back() { cancelPendingAdvance(); if (stepIndex > 0) stepIndex-- }
     fun skip() = next()
-    fun editAt(index: Int) { stepIndex = index.coerceIn(0, Step.entries.lastIndex) }
+    fun editAt(index: Int) { cancelPendingAdvance(); stepIndex = index.coerceIn(0, Step.entries.lastIndex) }
 
     // ── Field updates ─────────────────────────────────────────────────────────
 
@@ -258,11 +259,26 @@ class AppViewModel(
     fun setNotes(value: String) = update { it.copy(notes = value) }
     fun setHeartNotes(value: String) = update { it.copy(heartNotes = value) }
 
-    fun pickRating(field: RatingField, value: Int) = update {
-        when (field) {
-            RatingField.ENERGY -> it.copy(energy = value)
-            RatingField.HAPPINESS -> it.copy(happiness = value)
-            RatingField.PORTION -> it.copy(portion = value)
+    // Cancelled/replaced on each rating tap so a quick re-pick resets the timer,
+    // and cancelled on any manual navigation so the delayed fire can't mis-step.
+    private var ratingsAdvanceJob: Job? = null
+
+    fun pickRating(field: RatingField, value: Int) {
+        ratingsAdvanceJob?.cancel()
+        ratingsAdvanceJob = null
+        update {
+            when (field) {
+                RatingField.ENERGY -> it.copy(energy = value)
+                RatingField.HAPPINESS -> it.copy(happiness = value)
+                RatingField.PORTION -> it.copy(portion = value)
+            }
+        }
+        // Auto-advance once all three ratings are filled — equivalent to the
+        // web app's individual per-step selRate() auto-advance, collapsed onto
+        // the single combined Ratings step used in the native wizard.
+        val e = entry
+        if (e.energy != null && e.happiness != null && e.portion != null) {
+            ratingsAdvanceJob = viewModelScope.launch { delay(380); next() }
         }
     }
 
@@ -273,12 +289,16 @@ class AppViewModel(
     private var heartAdvanceJob: Job? = null
 
     fun selectHeart(h: Heart) {
-        heartAdvanceJob?.cancel()
-        heartAdvanceJob = null
+        cancelPendingAdvance()
         update { if (h == Heart.GOOD) it.copy(heart = h, heartNotes = "") else it.copy(heart = h) }
         if (h == Heart.GOOD) {
             heartAdvanceJob = viewModelScope.launch { delay(380); next() }
         }
+    }
+
+    private fun cancelPendingAdvance() {
+        ratingsAdvanceJob?.cancel(); ratingsAdvanceJob = null
+        heartAdvanceJob?.cancel();   heartAdvanceJob = null
     }
 
     fun toggleNotInKeto() = update { it.copy(notInKeto = !it.notInKeto) }
@@ -453,7 +473,8 @@ class AppViewModel(
     }
 
     internal fun isIncomplete(s: Step, e: DayEntry): Boolean = when (s) {
-        Step.BREAKFAST -> e.breakfast.isEmpty()
+        // A keto-flagged breakfast with no text is a deliberate fast — treat as done.
+        Step.BREAKFAST -> e.breakfast.isEmpty() && !e.breakfastKeto
         Step.LUNCH -> e.lunch.isEmpty()
         Step.DINNER -> e.dinner.isEmpty()
         Step.RATINGS -> e.energy == null || e.happiness == null || e.portion == null
@@ -470,11 +491,37 @@ class AppViewModel(
         if (incomplete.isEmpty()) return Step.SUMMARY.ordinal
 
         val ss = smartStep()
-        if (ss in incomplete) return ss.ordinal
-        for (i in 0..ss.ordinal) {
+        // Don't skip past an unfilled lunch just because it's dinner time — lunch
+        // must be explicitly completed (or skipped by the user) before dinner.
+        // Breakfast is exempt: an empty breakfast is auto-fasted by loadDateEntry.
+        val effective = if (ss == Step.DINNER && isIncomplete(Step.LUNCH, e)) Step.LUNCH else ss
+
+        if (effective in incomplete) return effective.ordinal
+        for (i in 0..effective.ordinal) {
             if (Step.entries[i] in incomplete) return i
         }
         return incomplete.first().ordinal
+    }
+
+    /**
+     * Returns the entry for [key], applying fasted-breakfast logic for today:
+     * if it is past 10:00 and breakfast has never been touched (empty text,
+     * keto flag off), we silently mark it keto — recording a deliberate fast —
+     * and persist the change so the flag survives a restart.
+     *
+     * This mirrors the user's intent that an unrecorded breakfast past breakfast
+     * hour should be assumed to be a fasted (keto) meal, reducing required taps.
+     */
+    private fun loadDateEntry(key: String): DayEntry {
+        val base = allEntries[key] ?: DayEntry(date = key)
+        if (DateUtils.isToday(key) && LocalTime.now().hour >= 10
+            && base.breakfast.isEmpty() && !base.breakfastKeto) {
+            val fasted = base.copy(breakfastKeto = true)
+            allEntries = allEntries + (key to fasted)
+            viewModelScope.launch { runCatching { repo.save(fasted) } }
+            return fasted
+        }
+        return base
     }
 }
 
