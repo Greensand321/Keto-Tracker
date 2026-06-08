@@ -18,6 +18,7 @@ import org.junit.Test
 private class InMemoryDao : DayEntryDao {
     val store = mutableMapOf<String, DayEntryEntity>()
     override suspend fun upsert(entity: DayEntryEntity) { store[entity.date] = entity }
+    override suspend fun upsertAll(entities: List<DayEntryEntity>) { entities.forEach { store[it.date] = it } }
     override suspend fun get(date: String): DayEntryEntity? = store[date]
     override suspend fun getAll(): List<DayEntryEntity> = store.values.sortedByDescending { it.date }
     override suspend fun deleteAll() { store.clear() }
