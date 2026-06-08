@@ -20,8 +20,10 @@ import androidx.compose.ui.unit.dp
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.DayEntry
 import com.ketotracker.data.Heart
+import com.ketotracker.data.Meal
 import com.ketotracker.data.PORTION_LABELS
 import com.ketotracker.data.RATING_LABELS
+import com.ketotracker.data.photo.MealPhoto
 import com.ketotracker.ui.theme.KetoTheme
 
 private data class SumRow(
@@ -33,6 +35,7 @@ private data class SumRow(
     val time: String? = null,
     val valueColor: Color? = null,
     val subNote: String? = null,
+    val meal: Meal? = null,
 )
 
 @Composable
@@ -42,6 +45,8 @@ fun SummaryCard(
     isToday: Boolean,
     canEdit: Boolean,
     onEdit: (Int) -> Unit,
+    mealPhotos: (Meal) -> List<MealPhoto> = { emptyList() },
+    onViewPhoto: (MealPhoto) -> Unit = {},
 ) {
     val c = KetoTheme.colors
     val e = entry
@@ -56,9 +61,9 @@ fun SummaryCard(
     }
 
     val rows = listOf(
-        SumRow("🍳", "Breakfast", e.breakfast.ifEmpty { null }, 0, e.breakfastKeto, e.breakfastTime),
-        SumRow("🥗", "Lunch", e.lunch.ifEmpty { null }, 1, e.lunchKeto, e.lunchTime),
-        SumRow("🍽️", "Dinner", e.dinner.ifEmpty { null }, 2, e.dinnerKeto, e.dinnerTime),
+        SumRow("🍳", "Breakfast", e.breakfast.ifEmpty { null }, 0, e.breakfastKeto, e.breakfastTime, meal = Meal.BREAKFAST),
+        SumRow("🥗", "Lunch", e.lunch.ifEmpty { null }, 1, e.lunchKeto, e.lunchTime, meal = Meal.LUNCH),
+        SumRow("🍽️", "Dinner", e.dinner.ifEmpty { null }, 2, e.dinnerKeto, e.dinnerTime, meal = Meal.DINNER),
         SumRow("⚡", "Energy", e.energy?.let { "$it/5 — ${RATING_LABELS[it]}" }, 3),
         SumRow("😊", "Happiness", e.happiness?.let { "$it/5 — ${RATING_LABELS[it]}" }, 3),
         SumRow("🍽", "Portions", e.portion?.let { "$it/5 — ${PORTION_LABELS[it]}" }, 3),
@@ -91,7 +96,7 @@ fun SummaryCard(
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            rows.forEach { SummaryRow(it, canEdit, onEdit) }
+            rows.forEach { SummaryRow(it, canEdit, onEdit, mealPhotos, onViewPhoto) }
 
             // Flags row (only when there is something to show).
             val badges = buildList {
@@ -121,8 +126,15 @@ fun SummaryCard(
 }
 
 @Composable
-private fun SummaryRow(row: SumRow, canEdit: Boolean, onEdit: (Int) -> Unit) {
+private fun SummaryRow(
+    row: SumRow,
+    canEdit: Boolean,
+    onEdit: (Int) -> Unit,
+    mealPhotos: (Meal) -> List<MealPhoto>,
+    onViewPhoto: (MealPhoto) -> Unit,
+) {
     val c = KetoTheme.colors
+    val photos = row.meal?.let(mealPhotos) ?: emptyList()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -135,6 +147,9 @@ private fun SummaryRow(row: SumRow, canEdit: Boolean, onEdit: (Int) -> Unit) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 KText(row.key.uppercase(), size = 11, color = c.txtM, letterSpacing = 1.5f)
+                if (photos.isNotEmpty()) {
+                    PhotoIndicator(count = photos.size) { onViewPhoto(photos.first()) }
+                }
                 if (row.time != null) {
                     KText("  @ ${row.time}", size = 11, color = c.txtD)
                 }

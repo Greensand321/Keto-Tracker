@@ -108,6 +108,43 @@ rebuilds, no risk to existing user data.
 `SharedPreferences` replacement) to persist the active theme id as a
 `Flow<String>`, collected by `AppViewModel` on init.
 
+### Photos — system camera intent + on-disk JPEGs
+
+The web app stores compressed photo blobs in IndexedDB (`Storage.photos`,
+keyed `YYYY-MM-DD_meal[_idx]`, max 5 per meal — see CLAUDE.md "IndexedDB
+(photo store)"). The native port keeps the same user-facing limits and
+behaviour but trades IndexedDB for plain files, and CameraX for the system
+camera app:
+
+- **`PhotoStore`** (`data/photo/PhotoStore.kt`) — owns a `filesDir/photos/`
+  directory of compressed JPEGs named `{date}_{meal}_{timestamp}.jpg`. The
+  timestamp (rather than a reusable index slot like the web version's
+  `addMealPhoto` migration logic) makes every filename unique forever, so a
+  deleted photo's name is never recycled — which matters because Coil caches
+  images by file path, and a recycled name could otherwise serve stale bytes.
+- **Capture**: `createCaptureUri()` hands the system camera app a `content://`
+  URI via `FileProvider` (`ActivityResultContracts.TakePicture()`). No
+  `CameraX` dependency and no `CAMERA` permission — capture is fully
+  delegated to whatever camera app the user already has, exactly like the web
+  app delegates to the OS via `<input type="file" capture="environment">`.
+- **Compression**: `PhotoStore.addFromUri()` decodes with a memory-safe
+  `inSampleSize`, corrects orientation from EXIF (`androidx.exifinterface`),
+  downscales to ≤900px on the long edge, and re-encodes as JPEG at quality 75
+  — matching the dimensions/quality documented in CLAUDE.md for the web app's
+  `compressImage()`.
+- **UI**: `MealPhotoArea` (thumbnails + "Add Photo"/"Add Another", rendered
+  below the action row so it never hides behind the keyboard — see CLAUDE.md
+  "Photo area"), `PhotoViewer` (full-screen, tap-to-dismiss — mirrors
+  `#photoModal`), and `PhotoIndicator` (the `📷 N` badge in `SummaryCard`,
+  mirroring `loadSummaryPhotoIcons`/`#ph-ic-{meal}`). Thumbnails and the
+  viewer load via **Coil** (`coil-compose`), which handles async decoding,
+  memory/disk caching, and lifecycle-aware cancellation — the native
+  equivalent of the web app's `URL.createObjectURL`/`revokeObjectURL` dance.
+- **State**: photo files live entirely outside the `DayEntry` JSON column, so
+  `AppViewModel` exposes them via a small `photoTick` counter that the UI
+  reads to know when to re-list a meal's photos after an add/remove —
+  `mealPhotos()`/`addPhoto()`/`removePhoto()`.
+
 ### UI layer — Jetpack Compose
 
 - **Theming**: `KetoColors` is a data class mirroring the web app's CSS
@@ -146,12 +183,12 @@ rebuilds, no risk to existing user data.
 | Day navigation (prev/next, swipe) | ✅ Done | Future days blocked |
 | Overview list of logged days | ✅ Done | `OverviewSheet` (flat list, jump on tap) |
 | **Local persistence (Room + DataStore)** | ✅ Done | JSON-column table; theme persisted via DataStore |
-| **Photos** (camera capture, compression, storage) | ⬜ Missing | Needs CameraX + blob/file storage |
+| **Photos** (camera capture, compression, storage) | ✅ Done | System camera intent + on-disk JPEGs (`PhotoStore`, `MealPhotoArea`, `PhotoViewer`) |
 | **Calendar / month grid view** | ⬜ Missing | Overview is a flat list; no color-coded month grid or arbitrary-date jump |
 | **Snapshots** (named backups, restore/export) | ⬜ Missing | Disabled placeholder in Settings |
 | **Export / Import** (JSON, merge/overwrite/skip) | ⬜ Missing | Disabled placeholders in Settings |
 | **History chip strip** (recent-days row) | ⬜ Missing | Shown below wizard in web app |
-| **Toast / snack-bar feedback** | ⬜ Missing | No equivalent to `toast()` yet |
+| **Toast / snack-bar feedback** | ✅ Done | `AppViewModel.messages` → Compose `SnackbarHost` |
 | **Auto-theme** (sync with system dark/light) | 🟡 Partial | `resolveAutoTheme()` exists but isn't wired into `PrefsStore`/`ThemePanel` |
 | **Storage usage stats** | 🟡 Partial | `StorageBar` renders but always shows 0% — no real `getStorageStats()` equivalent |
 | Jump to an arbitrary (unlogged) date | 🟡 Partial | Can only jump to days with existing entries, no date picker |
@@ -194,22 +231,24 @@ echo "sdk.dir=/path/to/Android/sdk" > local.properties
 | `renderSum()` | `SummaryCard` |
 | `load()` / `save()` (localStorage) | `IDayRepository` → `DayRepository` (Room, JSON column) |
 | `kt_theme` / `kt_theme_auto` (localStorage) | `PrefsStore` (DataStore Preferences) |
-| IndexedDB photo blobs | *(not yet built — planned: CameraX + Room/file storage)* |
+| IndexedDB photo blobs (`Storage.photos`) | `PhotoStore` — compressed JPEGs in app-private `filesDir/photos/` |
+| `compressImage()` / `openCamera()` / `handleCamera()` | `PhotoStore.addFromUri()` (EXIF-correct, downscale, JPEG-encode) + `createCaptureUri()` + `ActivityResultContracts.TakePicture()` |
+| `loadMealPhoto()` / `#photo-area` | `MealPhotoArea` (rendered below the action row on meal steps) |
+| `openPhotoModal()` / `#photoModal` | `PhotoViewer` (full-screen, tap-to-dismiss) |
+| `loadSummaryPhotoIcons()` / `#ph-ic-{meal}` | `PhotoIndicator` badge in `SummaryCard` |
 | `.cal-panel` month grid | *(not yet built — planned calendar screen)* |
 | `kt__snapshots` (localStorage array) | *(not yet built — planned Room table or DataStore blob)* |
 | `exportAll()` / `handleImport()` | *(not yet built — planned via Storage Access Framework)* |
 | Service worker / offline cache | Not needed — native app is offline by default |
-| `toast()` | *(not yet built — planned: Compose `SnackbarHost`)* |
+| `toast()` | `AppViewModel.messages` (`Channel<String>`) → Compose `SnackbarHost` |
 
 ---
 
 ## Suggested next steps (in priority order)
 
 1. **Calendar / month grid + jump-to-any-date** — biggest navigation gap; pure UI + `DateUtils` math.
-2. **Toast/snackbar feedback** — small effort, unblocks meaningful UX for export/import/snapshots.
-3. **Export / Import** — serialize `allEntries` ⇄ JSON via Storage Access Framework + ported `mergeEntries()` logic.
-4. **Snapshots** — same shape as export/import; up to 25 named backups (Room table or DataStore blob).
-5. **Auto-theme wiring** — extend `PrefsStore` with dark/light preferences + auto toggle; `resolveAutoTheme()` already exists.
-6. **History chip strip** — small UI addition below the wizard, data already in `allEntries`.
-7. **Real storage stats** — query Room row count/size estimate for the Settings storage bar.
-8. **Photos** — CameraX capture + on-device compression + storage (largest single effort; consider tackling last or in its own milestone).
+2. **Export / Import** — serialize `allEntries` ⇄ JSON via Storage Access Framework + ported `mergeEntries()` logic.
+3. **Snapshots** — same shape as export/import; up to 25 named backups (Room table or DataStore blob).
+4. **Auto-theme wiring** — extend `PrefsStore` with dark/light preferences + auto toggle; `resolveAutoTheme()` already exists.
+5. **History chip strip** — small UI addition below the wizard, data already in `allEntries`.
+6. **Real storage stats** — query Room row count/size estimate for the Settings storage bar.

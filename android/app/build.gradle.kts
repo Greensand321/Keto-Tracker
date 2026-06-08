@@ -68,6 +68,11 @@ dependencies {
     // kotlinx.serialization — DayEntry ↔ JSON for the Room data column
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
+    // Meal photos — async thumbnail/full-screen loading from on-disk JPEGs,
+    // and EXIF orientation correction for camera captures
+    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // Unit tests (JVM, src/test) — pure-Kotlin data layer: serialization, date math, repositories
