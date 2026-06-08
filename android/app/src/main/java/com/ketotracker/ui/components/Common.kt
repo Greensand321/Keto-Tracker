@@ -1,5 +1,8 @@
 package com.ketotracker.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,14 +13,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ketotracker.data.Step
@@ -87,23 +91,33 @@ fun Dots(currentIndex: Int) {
     ) {
         Step.dotted.forEach { s ->
             val idx = s.ordinal
-            when {
-                idx < currentIndex -> Dot(width = 7.dp, color = c.gold)
-                idx == currentIndex -> Dot(width = 22.dp, color = c.accent, rounded = 4.dp)
-                else -> Dot(width = 7.dp, color = c.bdI)
+            val (width, color) = when {
+                idx < currentIndex -> 7.dp to c.gold
+                idx == currentIndex -> 22.dp to c.accent
+                else -> 7.dp to c.bdI
             }
+            Dot(width = width, color = color)
         }
     }
 }
 
+/**
+ * A single progress dot — eases its width and color rather than snapping, so
+ * stepping through the wizard reads as the active dot growing/sliding into
+ * place instead of dots silently swapping states. A constant 4dp corner
+ * radius covers both shapes: on the 7×7dp resting size it's clamped to a
+ * circle, and on the 22×7dp active pill it reads as a rounded bar — so no
+ * shape animation is needed alongside the size/color ones.
+ */
 @Composable
-private fun Dot(width: androidx.compose.ui.unit.Dp, color: Color, rounded: androidx.compose.ui.unit.Dp? = null) {
-    val shape = if (rounded != null) RoundedCornerShape(rounded) else CircleShape
+private fun Dot(width: Dp, color: Color) {
+    val animatedWidth by animateDpAsState(width, animationSpec = tween(220), label = "dotWidth")
+    val animatedColor by animateColorAsState(color, animationSpec = tween(220), label = "dotColor")
     Box(
         Modifier
-            .size(width = width, height = 7.dp)
-            .clip(shape)
-            .background(color)
+            .size(width = animatedWidth, height = 7.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(animatedColor)
     )
 }
 
