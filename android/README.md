@@ -122,12 +122,19 @@ camera app:
   `addMealPhoto` migration logic) makes every filename unique forever, so a
   deleted photo's name is never recycled — which matters because Coil caches
   images by file path, and a recycled name could otherwise serve stale bytes.
-- **Capture**: `createCaptureUri()` hands the system camera app a `content://`
-  URI via `FileProvider` (`ActivityResultContracts.TakePicture()`). No
-  `CameraX` dependency and no `CAMERA` permission — capture is fully
-  delegated to whatever camera app the user already has, exactly like the web
-  app delegates to the OS via `<input type="file" capture="environment">`.
-- **Compression**: `PhotoStore.addFromUri()` decodes with a memory-safe
+- **Capture**: `createCaptureTarget()` hands the system camera app a
+  `content://` URI via `FileProvider` (`ActivityResultContracts.TakePicture()`),
+  returning a `CaptureTarget(file, uri)` pair so the UI can hold onto the
+  underlying temp `File` too. No `CameraX` dependency and no `CAMERA`
+  permission — capture is fully delegated to whatever camera app the user
+  already has, exactly like the web app delegates to the OS via
+  `<input type="file" capture="environment">`. The temp file lives in
+  `cacheDir/captures/`; `PhotoStore.addFromCapture` always deletes it when
+  it's done (success, failure, or a cancelled capture deletes it directly in
+  `MealPhotoArea`), and `clearStaleCaptures()` sweeps the directory on every
+  app launch as a safety net for process death mid-capture.
+- **Compression**: `PhotoStore.addFromCapture()` reads the temp file directly
+  (no `ContentResolver`/`Uri` needed), decodes with a memory-safe
   `inSampleSize`, corrects orientation from EXIF (`androidx.exifinterface`),
   downscales to ≤900px on the long edge, and re-encodes as JPEG at quality 75
   — matching the dimensions/quality documented in CLAUDE.md for the web app's
@@ -326,7 +333,7 @@ echo "sdk.dir=/path/to/Android/sdk" > local.properties
 | `kt_theme` / `kt_theme_auto` / `kt_theme_dark_auto` / `kt_theme_light_auto` (localStorage) | `PrefsStore` (DataStore Preferences) |
 | `applyAutoTheme()` / `toggleAutoTheme()` | `resolveAutoTheme()` (resolves by `isSystemInDarkTheme()`) + `AppViewModel.toggleAutoTheme/setAutoThemeChoice`, applied in `MainActivity` |
 | IndexedDB photo blobs (`Storage.photos`) | `PhotoStore` — compressed JPEGs in app-private `filesDir/photos/` |
-| `compressImage()` / `openCamera()` / `handleCamera()` | `PhotoStore.addFromUri()` (EXIF-correct, downscale, JPEG-encode) + `createCaptureUri()` + `ActivityResultContracts.TakePicture()` |
+| `compressImage()` / `openCamera()` / `handleCamera()` | `PhotoStore.addFromCapture()` (EXIF-correct, downscale, JPEG-encode) + `createCaptureTarget()` + `ActivityResultContracts.TakePicture()` |
 | `loadMealPhoto()` / `#photo-area` | `MealPhotoArea` (rendered below the action row on meal steps) |
 | `openPhotoModal()` / `#photoModal` | `PhotoViewer` (full-screen, tap-to-dismiss) |
 | `loadSummaryPhotoIcons()` / `#ph-ic-{meal}` | `PhotoIndicator` badge in `SummaryCard` |
