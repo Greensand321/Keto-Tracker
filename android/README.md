@@ -176,6 +176,40 @@ swallows its own touch events).
   unlogged dates, the calendar doubles as the "jump to an arbitrary date"
   picker the Overview list couldn't provide — closing that parity gap too.
 
+### Export / Import — Storage Access Framework + JSON
+
+The native counterpart of the web app's `exportAll()`/`handleImport()`
+(CLAUDE.md "Export / Import"). All pure JSON encode/decode/merge logic lives
+in `data/io/DataPortability.kt`; the Settings screen owns the SAF pickers and
+a single confirmation dialog.
+
+- **File pickers replace Blob-download/`<input type="file">`**: `SettingsSheet`
+  launches `ActivityResultContracts.CreateDocument("application/json")` for
+  export and `ActivityResultContracts.OpenDocument()` (filtered to
+  `application/json`) for import — the user picks the destination/source via
+  the system file UI; `DataPortability.write/read` then stream through
+  `ContentResolver` on `Dispatchers.IO`.
+- **Format parity**: `DataPortability.encode/decode` keep the exact flat
+  `{ "YYYY-MM-DD": {...} }` shape (pretty-printed, like the web's
+  `JSON.stringify(obj, null, 2)`), and `decode` still accepts the legacy
+  `kt_d_`/`kt_` key prefixes — forcing each entry's `date` field to match its
+  (normalised) outer key so a malformed export can't produce an inconsistent
+  record.
+- **Pending-import flow**: `AppViewModel.importFrom` parses the file off the
+  main thread and stores only a count summary in `pendingImport`
+  (`PendingImport(newCount, dupCount)`) — the raw decoded entries stay
+  private. `SettingsSheet` observes that state and shows
+  `ImportConfirmDialog`, a custom `Dialog`-based overlay (the codebase has no
+  Material3 `AlertDialog` usage anywhere, so this matches `ThemePanel`/
+  `KetoCard` styling instead) that collapses the web app's chained `confirm()`
+  calls into one screen with merge/overwrite/skip options.
+- **Resolution**: `confirmImport(mode)` applies `DataPortability.merge` (fills
+  empty fields only — `""`/`null`/`false` count as empty, mirroring
+  `mergeEntries`), full overwrite, or skip for duplicates — new days are
+  always written — then bulk-persists via `IDayRepository.saveAll()` (a new
+  `@Upsert` DAO method shared with the future Snapshot-restore feature) and
+  refreshes `allEntries`/`entry` in one pass.
+
 ### UI layer — Jetpack Compose
 
 - **Theming**: `KetoColors` is a data class mirroring the web app's CSS
@@ -217,7 +251,7 @@ swallows its own touch events).
 | **Photos** (camera capture, compression, storage) | ✅ Done | System camera intent + on-disk JPEGs (`PhotoStore`, `MealPhotoArea`, `PhotoViewer`) |
 | **Calendar / month grid view** | ✅ Done | `CalendarPanel` — color-coded month grid, opened from the header date chip |
 | **Snapshots** (named backups, restore/export) | ⬜ Missing | Disabled placeholder in Settings |
-| **Export / Import** (JSON, merge/overwrite/skip) | ⬜ Missing | Disabled placeholders in Settings |
+| **Export / Import** (JSON, merge/overwrite/skip) | ✅ Done | `DataPortability` (SAF + `kotlinx.serialization`), `ImportConfirmDialog` in Settings |
 | **History chip strip** (recent-days row) | ⬜ Missing | Shown below wizard in web app |
 | **Toast / snack-bar feedback** | ✅ Done | `AppViewModel.messages` → Compose `SnackbarHost` |
 | **Auto-theme** (sync with system dark/light) | 🟡 Partial | `resolveAutoTheme()` exists but isn't wired into `PrefsStore`/`ThemePanel` |
@@ -269,7 +303,7 @@ echo "sdk.dir=/path/to/Android/sdk" > local.properties
 | `loadSummaryPhotoIcons()` / `#ph-ic-{meal}` | `PhotoIndicator` badge in `SummaryCard` |
 | `.cal-panel` month grid | `CalendarPanel` (`DateUtils.monthGrid()` for the 6×7 grid math) |
 | `kt__snapshots` (localStorage array) | *(not yet built — planned Room table or DataStore blob)* |
-| `exportAll()` / `handleImport()` | *(not yet built — planned via Storage Access Framework)* |
+| `exportAll()` / `handleImport()` | `DataPortability.encode/decode/merge` + `AppViewModel.exportAll/importFrom/confirmImport`, via `CreateDocument`/`OpenDocument` (SAF) |
 | Service worker / offline cache | Not needed — native app is offline by default |
 | `toast()` | `AppViewModel.messages` (`Channel<String>`) → Compose `SnackbarHost` |
 
@@ -277,8 +311,7 @@ echo "sdk.dir=/path/to/Android/sdk" > local.properties
 
 ## Suggested next steps (in priority order)
 
-1. **Export / Import** — serialize `allEntries` ⇄ JSON via Storage Access Framework + ported `mergeEntries()` logic.
-2. **Snapshots** — same shape as export/import; up to 25 named backups (Room table or DataStore blob).
-3. **Auto-theme wiring** — extend `PrefsStore` with dark/light preferences + auto toggle; `resolveAutoTheme()` already exists.
-4. **History chip strip** — small UI addition below the wizard, data already in `allEntries`.
-5. **Real storage stats** — query Room row count/size estimate for the Settings storage bar.
+1. **Snapshots** — same shape as export/import; up to 25 named backups (Room table or DataStore blob). Can reuse `IDayRepository.saveAll()` for restore.
+2. **Auto-theme wiring** — extend `PrefsStore` with dark/light preferences + auto toggle; `resolveAutoTheme()` already exists.
+3. **History chip strip** — small UI addition below the wizard, data already in `allEntries`.
+4. **Real storage stats** — query Room row count/size estimate for the Settings storage bar.

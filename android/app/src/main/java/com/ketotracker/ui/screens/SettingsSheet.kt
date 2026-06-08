@@ -1,5 +1,7 @@
 package com.ketotracker.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,9 +21,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import com.ketotracker.data.DateUtils
 import com.ketotracker.model.AppViewModel
+import com.ketotracker.model.ImportMode
+import com.ketotracker.model.PendingImport
 import com.ketotracker.ui.components.KText
 import com.ketotracker.ui.theme.KetoTheme
 
@@ -30,6 +37,14 @@ private const val APP_VERSION = "1.0-native-demo"
 @Composable
 fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
     val c = KetoTheme.colors
+    val context = LocalContext.current
+
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) vm.exportAll(context, uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importFrom(context, uri)
+    }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
@@ -76,16 +91,12 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                 // Data
                 SettingsSection("Data") {
                     SettingsDivider("${vm.loggedKeys().size} day(s) logged")
-                    SettingsButton(
-                        "📋 Export Data",
-                        subtitle = "Coming soon",
-                        enabled = false,
-                    ) {}
-                    SettingsButton(
-                        "📥 Import Data",
-                        subtitle = "Coming soon",
-                        enabled = false,
-                    ) {}
+                    SettingsButton("📋 Export Data", subtitle = "Save all entries as a .json file") {
+                        exportLauncher.launch("keto-all-data-${DateUtils.todayKey()}.json")
+                    }
+                    SettingsButton("📥 Import Data", subtitle = "Merge entries from a .json file") {
+                        importLauncher.launch(arrayOf("application/json"))
+                    }
                 }
 
                 // Backups
@@ -108,6 +119,83 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                 Spacer(Modifier.height(32.dp))
             }
         }
+
+        vm.pendingImport?.let { pending ->
+            ImportConfirmDialog(
+                pending = pending,
+                onConfirm = { vm.confirmImport(it) },
+                onCancel = { vm.cancelImport() },
+            )
+        }
+    }
+}
+
+// ── Import confirmation ───────────────────────────────────────────────────────
+// Custom-styled dialog (no Material3 AlertDialog used anywhere in this codebase)
+// that collapses the web app's chained confirm() calls into one screen — see
+// CLAUDE.md "Import" for the merge/overwrite/skip semantics this mirrors.
+
+@Composable
+private fun ImportConfirmDialog(
+    pending: PendingImport,
+    onConfirm: (ImportMode) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val c = KetoTheme.colors
+    Dialog(onDismissRequest = onCancel) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(c.surf)
+                .border(1.dp, c.bdI, RoundedCornerShape(18.dp))
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            KText("📥 Import data?", size = 17, color = c.gold, weight = FontWeight.Bold)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (pending.newCount > 0) {
+                    KText("• ${pending.newCount} new day(s) will be added", size = 14, color = c.txt)
+                }
+                if (pending.dupCount > 0) {
+                    KText("• ${pending.dupCount} day(s) already exist — choose how to handle them below", size = 14, color = c.txt)
+                }
+            }
+            if (pending.dupCount > 0) {
+                DialogOption("Merge — fill empty fields only", "Existing values are kept; gaps are filled from the import") { onConfirm(ImportMode.MERGE) }
+                DialogOption("Overwrite", "Imported data replaces the existing duplicate days") { onConfirm(ImportMode.OVERWRITE) }
+                DialogOption("Skip duplicates", "Keep existing data; only add the new days") { onConfirm(ImportMode.SKIP) }
+            } else {
+                DialogOption("Import", "Add ${pending.newCount} day(s) to your log") { onConfirm(ImportMode.SKIP) }
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onCancel() }
+                    .padding(vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                KText("Cancel", size = 14, color = c.txtM, weight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogOption(title: String, subtitle: String, onClick: () -> Unit) {
+    val c = KetoTheme.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.inp)
+            .border(1.dp, c.bd, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        KText(title, size = 14, color = c.txt, weight = FontWeight.SemiBold)
+        KText(subtitle, size = 12, color = c.txtM)
     }
 }
 

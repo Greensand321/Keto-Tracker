@@ -10,6 +10,9 @@ interface DayEntryDao {
     @Upsert
     suspend fun upsert(entity: DayEntryEntity)
 
+    @Upsert
+    suspend fun upsertAll(entities: List<DayEntryEntity>)
+
     @Query("SELECT * FROM day_entries WHERE date = :date LIMIT 1")
     suspend fun get(date: String): DayEntryEntity?
 

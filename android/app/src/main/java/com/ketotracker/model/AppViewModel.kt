@@ -22,6 +22,7 @@ import com.ketotracker.data.Heart
 import com.ketotracker.data.Meal
 import com.ketotracker.data.Step
 import com.ketotracker.data.db.KetoDatabase
+import com.ketotracker.data.io.DataPortability
 import com.ketotracker.data.photo.MAX_MEAL_PHOTOS
 import com.ketotracker.data.photo.MealPhoto
 import com.ketotracker.data.photo.PhotoSaveResult
@@ -72,6 +73,15 @@ class AppViewModel(
     // a plain disk read with no Compose State of its own — re-triggers reads
     // on recomposition instead of going stale after add/remove.
     private var photoTick by mutableStateOf(0)
+
+    // Set by `importFrom` once a file is parsed, so the UI can show a
+    // merge/overwrite/skip choice (native counterpart of the web app's
+    // chained confirm() dialogs — see CLAUDE.md "Import"). The raw decoded
+    // entries stay private; the UI only ever sees the summary counts.
+    var pendingImport by mutableStateOf<PendingImport?>(null)
+        private set
+    private var pendingNewEntries: Map<String, DayEntry> = emptyMap()
+    private var pendingDupEntries: Map<String, DayEntry> = emptyMap()
 
     init {
         // Observe the persisted theme preference.
@@ -276,6 +286,84 @@ class AppViewModel(
         }
     }
 
+    // ── Export / Import ───────────────────────────────────────────────────────
+    // Native counterpart to the web app's exportAll/handleImport (CLAUDE.md
+    // "Export / Import"). The UI hands us a SAF Uri obtained via
+    // CreateDocument/OpenDocument; we own the JSON encode/decode and the
+    // merge/overwrite/skip resolution, surfacing only a summary for the UI to
+    // confirm via `pendingImport`.
+
+    fun exportAll(context: Context, uri: Uri) {
+        val snapshot = allEntries
+        viewModelScope.launch {
+            val text = DataPortability.encode(snapshot)
+            val ok = DataPortability.write(context, uri, text)
+            if (ok) notify("Exported ${snapshot.size} day${if (snapshot.size != 1) "s" else ""} ✓")
+            else notify("Export failed")
+        }
+    }
+
+    fun importFrom(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val text = DataPortability.read(context, uri)
+            if (text == null) { notify("Could not read file"); return@launch }
+            val decoded = DataPortability.decode(text)
+            if (decoded.isEmpty()) { notify("No valid entries found in file"); return@launch }
+            val newEntries = decoded.filterKeys { it !in allEntries }
+            val dupEntries = decoded.filterKeys { it in allEntries }
+            pendingNewEntries = newEntries
+            pendingDupEntries = dupEntries
+            pendingImport = PendingImport(newCount = newEntries.size, dupCount = dupEntries.size)
+        }
+    }
+
+    /**
+     * Resolves the pending import with the chosen [mode] for duplicate days
+     * (new days are always written, mirroring the web app), bulk-persists the
+     * result, and refreshes in-memory state — including the active `entry` if
+     * the day being viewed was among those just written.
+     */
+    fun confirmImport(mode: ImportMode) {
+        val newEntries = pendingNewEntries
+        val dupEntries = pendingDupEntries
+        pendingImport = null
+        pendingNewEntries = emptyMap()
+        pendingDupEntries = emptyMap()
+
+        viewModelScope.launch {
+            val toWrite = LinkedHashMap<String, DayEntry>(newEntries)
+            when (mode) {
+                ImportMode.MERGE -> dupEntries.forEach { (key, imported) ->
+                    toWrite[key] = DataPortability.merge(allEntries[key] ?: DayEntry(date = key), imported)
+                }
+                ImportMode.OVERWRITE -> toWrite += dupEntries
+                ImportMode.SKIP -> Unit
+            }
+            if (toWrite.isEmpty()) { notify("No days imported"); return@launch }
+
+            runCatching { repo.saveAll(toWrite.values.toList()) }
+                .onSuccess {
+                    allEntries = allEntries + toWrite
+                    toWrite[viewedKey]?.let { entry = it; stepIndex = defStep(it) }
+                    val n = toWrite.size
+                    val note = when {
+                        dupEntries.isEmpty() -> ""
+                        mode == ImportMode.MERGE -> " (merged)"
+                        mode == ImportMode.OVERWRITE -> " (overwritten)"
+                        else -> " · ${dupEntries.size} duplicate${if (dupEntries.size != 1) "s" else ""} skipped"
+                    }
+                    notify("Imported $n day${if (n != 1) "s" else ""}$note ✓")
+                }
+                .onFailure { reportError("Import failed", it) }
+        }
+    }
+
+    fun cancelImport() {
+        pendingImport = null
+        pendingNewEntries = emptyMap()
+        pendingDupEntries = emptyMap()
+    }
+
     // ── Smart step logic ──────────────────────────────────────────────────────
 
     private fun smartStep(): Step {
@@ -315,3 +403,9 @@ class AppViewModel(
 }
 
 enum class RatingField { ENERGY, HAPPINESS, PORTION }
+
+/** Summary counts shown by the import-confirmation dialog (CLAUDE.md "Import"). */
+data class PendingImport(val newCount: Int, val dupCount: Int)
+
+/** How to resolve duplicate days during import — mirrors the web app's three confirm() choices. */
+enum class ImportMode { MERGE, OVERWRITE, SKIP }

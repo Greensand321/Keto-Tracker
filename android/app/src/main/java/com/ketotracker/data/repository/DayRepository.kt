@@ -23,6 +23,10 @@ class DayRepository(private val dao: DayEntryDao) : IDayRepository {
         dao.upsert(DayEntryEntity(date = entry.date, data = json.encodeToString(DayEntry.serializer(), entry)))
     }
 
+    override suspend fun saveAll(entries: List<DayEntry>) {
+        dao.upsertAll(entries.map { DayEntryEntity(date = it.date, data = json.encodeToString(DayEntry.serializer(), it)) })
+    }
+
     override suspend fun deleteAll() = dao.deleteAll()
 
     private fun decode(entity: DayEntryEntity): DayEntry? =
