@@ -3,9 +3,13 @@ package com.ketotracker.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -62,11 +66,11 @@ import com.ketotracker.ui.theme.KetoTheme
 
 private enum class Overlay { NONE, THEME, OVERVIEW, CALENDAR, SUPPLEMENTS, QUICK_SELECT, SETTINGS }
 
-// A quick fade in/out keeps every overlay — bottom-anchored panels and
-// full-screen sheets alike — feeling consistent without needing to know
-// each one's internal layout (scrim, card alignment, etc.).
-private val OVERLAY_ENTER = fadeIn(tween(180))
-private val OVERLAY_EXIT = fadeOut(tween(140))
+// Bottom-sheet style entrance/exit: slide up from below + fade in, reverse on close.
+// Using the same spec for every overlay keeps motion consistent regardless of whether
+// the overlay is a full-screen sheet, a panel anchored to the bottom, or a photo viewer.
+private val OVERLAY_ENTER = slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(260))
+private val OVERLAY_EXIT  = slideOutVertically(tween(260, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(200))
 
 @Composable
 fun WizardScreen(vm: AppViewModel) {
@@ -233,7 +237,6 @@ fun WizardScreen(vm: AppViewModel) {
 // ── Step content ─────────────────────────────────────────────────────────────
 
 private const val STEP_SLIDE_DP = 28f
-private const val STEP_TRANSITION_MS = 260
 
 /**
  * Slides + fades the active step (or summary day) in from the direction of
@@ -261,7 +264,10 @@ private fun StepTransition(stepIndex: Int, dayKey: String, content: @Composable 
             forward = if (dayKey != prevDay) dayKey > prevDay else stepIndex > prevStep
             previous = target
             progress.snapTo(0f)
-            progress.animateTo(1f, tween(STEP_TRANSITION_MS, easing = FastOutSlowInEasing))
+            progress.animateTo(
+                1f,
+                spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium),
+            )
         }
     }
 

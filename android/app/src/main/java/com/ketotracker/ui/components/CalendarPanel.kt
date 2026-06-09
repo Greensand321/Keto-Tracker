@@ -1,8 +1,13 @@
 package com.ketotracker.ui.components
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -208,14 +214,23 @@ private fun CalendarCell(
 
     val faded = isFuture || !day.inCurrentMonth
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val cellScale by animateFloatAsState(
+        targetValue = if (pressed) 0.78f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
+        label = "cell_scale",
+    )
+
     Box(
         Modifier
             .aspectRatio(1f)
+            .scale(cellScale)
             .alpha(if (!faded) 1f else if (isFuture) 0.2f else 0.28f)
             .clip(CircleShape)
             .background(bg)
             .let { m -> if (ring != null) m.border(2.dp, ring, CircleShape) else m }
-            .clickable(enabled = !isFuture, onClick = onClick),
+            .clickable(interactionSource = interactionSource, indication = null, enabled = !isFuture, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         KText(

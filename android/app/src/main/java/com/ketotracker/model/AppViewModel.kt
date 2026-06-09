@@ -423,6 +423,15 @@ class AppViewModel(
     // merge/overwrite/skip resolution, surfacing only a summary for the UI to
     // confirm via `pendingImport`.
 
+    fun deleteDay(key: String) {
+        allEntries = allEntries - key
+        if (viewedKey == key) goToday()
+        viewModelScope.launch {
+            runCatching { repo.delete(key) }
+                .onFailure { reportError("Couldn't delete entry", it) }
+        }
+    }
+
     fun exportAll(context: Context, uri: Uri) {
         val snapshot = allEntries
         viewModelScope.launch {
