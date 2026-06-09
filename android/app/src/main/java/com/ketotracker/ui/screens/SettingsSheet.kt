@@ -2,6 +2,9 @@
 
 package com.ketotracker.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
@@ -33,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -40,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.SnapshotMeta
 import com.ketotracker.data.io.StorageStats
@@ -55,7 +60,7 @@ import java.time.format.DateTimeFormatter
 private const val APP_VERSION = "1.0-native-demo"
 
 private enum class SettingsPage {
-    MAIN, DATA_BACKUPS, QUICK_SELECT, NOTIFICATIONS, STORAGE, APPEARANCE, ABOUT
+    MAIN, DATA_STORAGE, QUICK_SELECT, NOTIFICATIONS, APPEARANCE, ABOUT
 }
 
 @Composable
@@ -64,8 +69,8 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
     var page by remember { mutableStateOf(SettingsPage.MAIN) }
 
-    // All SAF launchers live at the top level so they're always composed and
-    // can safely receive results regardless of which sub-page is visible.
+    // All SAF launchers at the top level so they're always composed and can safely
+    // receive results regardless of which sub-page is currently visible.
     val exportJsonLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri -> if (uri != null) vm.exportAll(context, uri) }
@@ -103,7 +108,7 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                     onClose = onClose,
                     onNavigate = { page = it },
                 )
-                SettingsPage.DATA_BACKUPS -> SettingsDataBackupsPage(
+                SettingsPage.DATA_STORAGE -> SettingsDataStoragePage(
                     vm = vm,
                     onBack = { page = SettingsPage.MAIN },
                     onExportJson = { exportJsonLauncher.launch("keto-all-data-${DateUtils.todayKey()}.json") },
@@ -120,9 +125,6 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                     onBack = { page = SettingsPage.MAIN },
                 )
                 SettingsPage.NOTIFICATIONS -> SettingsNotificationsPage(
-                    onBack = { page = SettingsPage.MAIN },
-                )
-                SettingsPage.STORAGE -> SettingsStoragePage(
                     vm = vm,
                     onBack = { page = SettingsPage.MAIN },
                 )
@@ -165,36 +167,40 @@ private fun SettingsMainPage(
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            NavRow(icon = "📁", label = "Data & Backups",
-                sub = "${vm.loggedKeys().size} day(s) · ${vm.snapshots.size} snapshot(s)") {
-                onNavigate(SettingsPage.DATA_BACKUPS)
-            }
-            NavRow(icon = "⚡", label = "Quick-Select Foods",
-                sub = "${vm.quickSelectItems.size} item(s)") {
-                onNavigate(SettingsPage.QUICK_SELECT)
-            }
-            NavRow(icon = "🔔", label = "Notifications", sub = "Coming soon") {
-                onNavigate(SettingsPage.NOTIFICATIONS)
-            }
-            NavRow(icon = "💾", label = "Storage", sub = null) {
-                onNavigate(SettingsPage.STORAGE)
-            }
-            NavRow(icon = "🎨", label = "Appearance",
-                sub = if (vm.autoThemeEnabled) "Auto" else vm.themeId) {
-                onNavigate(SettingsPage.APPEARANCE)
-            }
-            NavRow(icon = "ℹ️", label = "About", sub = "v$APP_VERSION") {
-                onNavigate(SettingsPage.ABOUT)
-            }
+            NavRow(
+                icon = "📁",
+                label = "Data & Storage",
+                sub = "${vm.loggedKeys().size} day(s) · ${vm.snapshots.size} snapshot(s)",
+            ) { onNavigate(SettingsPage.DATA_STORAGE) }
+            NavRow(
+                icon = "⚡",
+                label = "Quick-Select Foods",
+                sub = "${vm.quickSelectItems.size} item(s)",
+            ) { onNavigate(SettingsPage.QUICK_SELECT) }
+            NavRow(
+                icon = "🔔",
+                label = "Notifications",
+                sub = if (vm.notificationsEnabled) "On — ${hourLabel(vm.notificationHour)}" else "Off",
+            ) { onNavigate(SettingsPage.NOTIFICATIONS) }
+            NavRow(
+                icon = "🎨",
+                label = "Appearance",
+                sub = if (vm.autoThemeEnabled) "Auto" else vm.themeId,
+            ) { onNavigate(SettingsPage.APPEARANCE) }
+            NavRow(
+                icon = "ℹ️",
+                label = "About",
+                sub = "v$APP_VERSION",
+            ) { onNavigate(SettingsPage.ABOUT) }
             Spacer(Modifier.height(24.dp))
         }
     }
 }
 
-// ── Data & Backups page ───────────────────────────────────────────────────────
+// ── Data & Storage page (merged) ──────────────────────────────────────────────
 
 @Composable
-private fun SettingsDataBackupsPage(
+private fun SettingsDataStoragePage(
     vm: AppViewModel,
     onBack: () -> Unit,
     onExportJson: () -> Unit,
@@ -204,13 +210,15 @@ private fun SettingsDataBackupsPage(
     onExportSnapshot: (Long) -> Unit,
 ) {
     val context = LocalContext.current
+    LaunchedEffect(Unit) { vm.loadStorageStats(context) }
+
     var showSaveDialog by remember { mutableStateOf(false) }
     var nameInput by remember { mutableStateOf("") }
     var confirmDeleteSnap by remember { mutableStateOf<SnapshotMeta?>(null) }
     var confirmRestoreSnap by remember { mutableStateOf<SnapshotMeta?>(null) }
 
     Column(Modifier.fillMaxSize()) {
-        SettingsSubHeader("📁 Data & Backups", onBack)
+        SettingsSubHeader("📁 Data & Storage", onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -218,7 +226,13 @@ private fun SettingsDataBackupsPage(
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            // JSON export/import
+
+            // ── Storage bar at the top ────────────────────────────────────────
+            SettingsSection("Storage") {
+                StorageBar(vm.storageStats)
+            }
+
+            // ── JSON export / import ──────────────────────────────────────────
             SettingsSection("JSON Export / Import") {
                 SettingsDivider("${vm.loggedKeys().size} day(s) logged")
                 SettingsButton("📋 Export Data", subtitle = "Save all entries as a .json file") {
@@ -229,7 +243,7 @@ private fun SettingsDataBackupsPage(
                 }
             }
 
-            // Full ZIP backup
+            // ── Full ZIP backup ───────────────────────────────────────────────
             SettingsSection("Full Backup") {
                 InfoBanner("Includes all entries AND meal photos in a single .zip archive.")
                 SettingsButton("📦 Export Full Backup", subtitle = "Save data + photos as a .zip") {
@@ -240,12 +254,13 @@ private fun SettingsDataBackupsPage(
                 }
             }
 
-            // Snapshots
+            // ── Snapshots ─────────────────────────────────────────────────────
             SettingsSection("Snapshots") {
-                SettingsButton("💾 Save Snapshot",
-                    subtitle = "Name and save a point-in-time backup (up to 25)") {
-                    nameInput = ""
-                    showSaveDialog = true
+                SettingsButton(
+                    "💾 Save Snapshot",
+                    subtitle = "Name and save a point-in-time backup (up to 25)",
+                ) {
+                    nameInput = ""; showSaveDialog = true
                 }
                 if (vm.snapshots.isEmpty()) {
                     SettingsDivider("No snapshots yet")
@@ -261,33 +276,28 @@ private fun SettingsDataBackupsPage(
                 }
             }
 
-            // Periodic backup
+            // ── Periodic backup ───────────────────────────────────────────────
             SettingsSection("Periodic Backup") {
                 SettingsButton(
                     title = "🔄 Auto-Backup",
                     subtitle = if (vm.backupEnabled)
                         "On — ${vm.backupFrequency.replaceFirstChar { it.uppercase() }}"
                     else "Off — tap to enable",
-                ) {
-                    vm.setBackupEnabled(context, !vm.backupEnabled)
-                }
+                ) { vm.setBackupEnabled(context, !vm.backupEnabled) }
+
                 if (vm.backupEnabled) {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        FrequencyChip(
-                            label = "Daily",
-                            selected = vm.backupFrequency == "daily",
-                            modifier = Modifier.weight(1f),
-                        ) { vm.setBackupFrequency(context, "daily") }
-                        FrequencyChip(
-                            label = "Weekly",
-                            selected = vm.backupFrequency == "weekly",
-                            modifier = Modifier.weight(1f),
-                        ) { vm.setBackupFrequency(context, "weekly") }
+                        SelectChip("Daily", vm.backupFrequency == "daily", Modifier.weight(1f)) {
+                            vm.setBackupFrequency(context, "daily")
+                        }
+                        SelectChip("Weekly", vm.backupFrequency == "weekly", Modifier.weight(1f)) {
+                            vm.setBackupFrequency(context, "weekly")
+                        }
                     }
-                    InfoBanner("Backup files are saved to your device's external storage under Keto Tracker/backups/. The last 7 files are kept.")
+                    InfoBanner("Backup files are saved to Keto Tracker/backups/ on your device. The last 7 files are kept.")
                 }
             }
 
@@ -295,7 +305,7 @@ private fun SettingsDataBackupsPage(
         }
     }
 
-    // Save Snapshot dialog
+    // ── Save Snapshot dialog ──────────────────────────────────────────────────
     if (showSaveDialog) {
         val c = KetoTheme.colors
         Dialog(onDismissRequest = { showSaveDialog = false }) {
@@ -310,44 +320,21 @@ private fun SettingsDataBackupsPage(
             ) {
                 KText("💾 Save Snapshot", size = 17, color = c.gold, weight = FontWeight.Bold)
                 KText("Give this snapshot a name so you can find it later.", size = 14, color = c.txtM)
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(c.inp)
-                        .border(1.dp, c.bd, RoundedCornerShape(12.dp))
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                ) {
-                    if (nameInput.isEmpty()) {
-                        KText("e.g. Pre-holiday backup", size = 15, color = c.txtD)
-                    }
-                    BasicTextField(
-                        value = nameInput,
-                        onValueChange = { nameInput = it },
-                        singleLine = true,
-                        textStyle = TextStyle(color = c.txt, fontSize = 15.sp),
-                        cursorBrush = SolidColor(c.accent),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+                SingleLineInput(
+                    value = nameInput,
+                    onValueChange = { nameInput = it },
+                    placeholder = "e.g. Pre-holiday backup",
+                )
                 DialogOption("Save", "Snapshot ${vm.loggedKeys().size} day(s)") {
                     vm.saveSnapshot(nameInput)
                     showSaveDialog = false
                 }
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { showSaveDialog = false }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    KText("Cancel", size = 14, color = c.txtM, weight = FontWeight.SemiBold)
-                }
+                DialogCancelButton { showSaveDialog = false }
             }
         }
     }
 
-    // Restore confirmation dialog
+    // ── Restore confirmation dialog ───────────────────────────────────────────
     confirmRestoreSnap?.let { snap ->
         val c = KetoTheme.colors
         Dialog(onDismissRequest = { confirmRestoreSnap = null }) {
@@ -369,20 +356,12 @@ private fun SettingsDataBackupsPage(
                     vm.restoreSnapshot(snap.id)
                     confirmRestoreSnap = null
                 }
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { confirmRestoreSnap = null }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    KText("Cancel", size = 14, color = c.txtM, weight = FontWeight.SemiBold)
-                }
+                DialogCancelButton { confirmRestoreSnap = null }
             }
         }
     }
 
-    // Delete confirmation dialog
+    // ── Delete confirmation dialog ────────────────────────────────────────────
     confirmDeleteSnap?.let { snap ->
         val c = KetoTheme.colors
         Dialog(onDismissRequest = { confirmDeleteSnap = null }) {
@@ -401,15 +380,7 @@ private fun SettingsDataBackupsPage(
                     vm.deleteSnapshot(snap.id)
                     confirmDeleteSnap = null
                 }
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { confirmDeleteSnap = null }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    KText("Cancel", size = 14, color = c.txtM, weight = FontWeight.SemiBold)
-                }
+                DialogCancelButton { confirmDeleteSnap = null }
             }
         }
     }
@@ -455,37 +426,6 @@ private fun SnapshotRow(
     }
 }
 
-@Composable
-private fun SmallActionButton(label: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
-    val c = KetoTheme.colors
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(color.copy(alpha = 0.12f))
-            .border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        KText(label, size = 13, color = color, weight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun FrequencyChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val c = KetoTheme.colors
-    Box(
-        modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) c.accent.copy(alpha = 0.15f) else c.surf)
-            .border(1.5.dp, if (selected) c.accent else c.bdI, RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        KText(label, size = 14, color = if (selected) c.accent else c.txtM, weight = FontWeight.SemiBold)
-    }
-}
-
 // ── Quick-Select page ─────────────────────────────────────────────────────────
 
 @Composable
@@ -503,11 +443,9 @@ private fun SettingsQuickSelectPage(vm: AppViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             KText(
-                "These items appear as chips in the Quick-Select panel when logging meals. Tap × to remove one.",
+                "These chips appear in the Quick-Select panel when logging meals. Tap × to remove.",
                 size = 13, color = c.txtM,
             )
-
-            // Current items
             FlowRow(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -517,8 +455,6 @@ private fun SettingsQuickSelectPage(vm: AppViewModel, onBack: () -> Unit) {
                     RemovableChip(food) { vm.removeQuickSelectItem(food) }
                 }
             }
-
-            // Add new item
             SettingsSection("Add Item") {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -557,42 +493,15 @@ private fun SettingsQuickSelectPage(vm: AppViewModel, onBack: () -> Unit) {
                             }
                             .padding(horizontal = 18.dp, vertical = 12.dp),
                     ) {
-                        KText("Add", size = 15, color = androidx.compose.ui.graphics.Color.White, weight = FontWeight.SemiBold)
+                        KText("Add", size = 15, color = Color.White, weight = FontWeight.SemiBold)
                     }
                 }
             }
-
-            SettingsButton("↩ Restore Defaults", subtitle = "Reset to the original ${AppViewModel.DEFAULT_QUICK_FOODS.size} items") {
-                vm.resetQuickSelectDefaults()
-            }
-
+            SettingsButton(
+                "↩ Restore Defaults",
+                subtitle = "Reset to the original ${AppViewModel.DEFAULT_QUICK_FOODS.size} items",
+            ) { vm.resetQuickSelectDefaults() }
             Spacer(Modifier.height(24.dp))
-        }
-    }
-}
-
-@Composable
-private fun RemovableChip(label: String, onRemove: () -> Unit) {
-    val c = KetoTheme.colors
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(c.surf)
-            .border(1.dp, c.bd, RoundedCornerShape(20.dp))
-            .padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        KText(label, size = 14, color = c.txt)
-        Box(
-            Modifier
-                .size(20.dp)
-                .clip(RoundedCornerShape(50))
-                .background(c.bdI)
-                .clickable { onRemove() },
-            contentAlignment = Alignment.Center,
-        ) {
-            KText("×", size = 14, color = c.txtM, weight = FontWeight.Bold)
         }
     }
 }
@@ -600,32 +509,31 @@ private fun RemovableChip(label: String, onRemove: () -> Unit) {
 // ── Notifications page ────────────────────────────────────────────────────────
 
 @Composable
-private fun SettingsNotificationsPage(onBack: () -> Unit) {
+private fun SettingsNotificationsPage(vm: AppViewModel, onBack: () -> Unit) {
+    val c = KetoTheme.colors
+    val context = LocalContext.current
+
+    // Android 13+ requires explicit POST_NOTIFICATIONS permission at runtime.
+    // On older versions the system grants it automatically, so we skip the request.
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) vm.setNotificationsEnabled(context, true)
+        // If denied, the toggle stays off — the user can re-enable from Android system settings.
+    }
+
+    fun requestEnableNotifications() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS); return }
+        }
+        vm.setNotificationsEnabled(context, true)
+    }
+
     Column(Modifier.fillMaxSize()) {
         SettingsSubHeader("🔔 Notifications", onBack)
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(
-                Modifier.padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                KText("🔔", size = 40)
-                KText("Notifications", size = 18, color = KetoTheme.colors.gold, weight = FontWeight.Bold)
-                KText("Coming soon — daily logging reminders.", size = 14, color = KetoTheme.colors.txtM)
-            }
-        }
-    }
-}
-
-// ── Storage page ──────────────────────────────────────────────────────────────
-
-@Composable
-private fun SettingsStoragePage(vm: AppViewModel, onBack: () -> Unit) {
-    val context = LocalContext.current
-    LaunchedEffect(Unit) { vm.loadStorageStats(context) }
-
-    Column(Modifier.fillMaxSize()) {
-        SettingsSubHeader("💾 Storage", onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -633,11 +541,191 @@ private fun SettingsStoragePage(vm: AppViewModel, onBack: () -> Unit) {
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            SettingsSection("Usage") {
-                StorageBar(vm.storageStats)
+
+            // ── Enable toggle ─────────────────────────────────────────────────
+            SettingsSection("Daily Reminder") {
+                // Main on/off row with an inline toggle indicator
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(c.surf)
+                        .border(1.dp, c.bd, RoundedCornerShape(13.dp))
+                        .clickable {
+                            if (vm.notificationsEnabled) vm.setNotificationsEnabled(context, false)
+                            else requestEnableNotifications()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        KText("🔔 Daily Reminder", size = 15, color = c.txt, weight = FontWeight.SemiBold)
+                        KText(
+                            if (vm.notificationsEnabled) "On — reminds you to log your meals"
+                            else "Off — tap to enable",
+                            size = 12, color = c.txtD,
+                        )
+                    }
+                    TogglePill(on = vm.notificationsEnabled)
+                }
+
+                // When a notification fires and the log is incomplete, the body is
+                // context-aware — it changes based on which meals are missing.
+                InfoBanner(
+                    "If all three meals are already logged for the day, the reminder is automatically suppressed — no unnecessary pings.",
+                )
             }
+
+            // ── Time selector (only shown when enabled) ───────────────────────
+            if (vm.notificationsEnabled) {
+                SettingsSection("Reminder Time") {
+                    KText(
+                        "Choose when you'd like to be nudged each day.",
+                        size = 13, color = c.txtM,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TimePreset(
+                            icon = "🌅",
+                            label = "Morning",
+                            sub = "8:00 AM",
+                            selected = vm.notificationHour == 8,
+                        ) { vm.setNotificationHour(context, 8) }
+                        TimePreset(
+                            icon = "☀️",
+                            label = "Afternoon",
+                            sub = "2:00 PM",
+                            selected = vm.notificationHour == 14,
+                        ) { vm.setNotificationHour(context, 14) }
+                        TimePreset(
+                            icon = "🌙",
+                            label = "Evening",
+                            sub = "8:00 PM",
+                            selected = vm.notificationHour == 20,
+                        ) { vm.setNotificationHour(context, 20) }
+                    }
+                }
+
+                // ── Notification preview card ─────────────────────────────────
+                SettingsSection("Preview") {
+                    NotificationPreviewCard(vm.notificationHour)
+                }
+            }
+
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+/** Visual mock of how the notification will appear in the notification shade. */
+@Composable
+private fun NotificationPreviewCard(hour: Int) {
+    val c = KetoTheme.colors
+    val previewBody = when {
+        hour <= 10 -> "Almost there — just log tonight's dinner to wrap up the day 🍽️"
+        hour <= 15 -> "Don't forget lunch! A quick entry keeps your log complete 🥗"
+        else       -> "Open Keto Tracker to log today's meals and keep your streak going 💪"
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(c.surf2)
+            .border(1.dp, c.bd, RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        // Mock system notification header bar
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // App icon placeholder
+                Box(
+                    Modifier
+                        .size(14.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(c.gold),
+                )
+                KText("KETO TRACKER", size = 10, color = c.txtM, weight = FontWeight.Bold, letterSpacing = 0.8f)
+            }
+            KText(hourLabel(hour), size = 10, color = c.txtD)
+        }
+        // Notification body
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            KText("Keto Tracker 🥑", size = 14, color = c.txt, weight = FontWeight.Bold)
+            KText(previewBody, size = 13, color = c.txtM)
+        }
+        // Action button row
+        Row {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(c.gold.copy(alpha = 0.15f))
+                    .border(1.dp, c.gold.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                KText("Log Now", size = 12, color = c.gold, weight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimePreset(icon: String, label: String, sub: String, selected: Boolean, onClick: () -> Unit) {
+    val c = KetoTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(13.dp))
+            .background(if (selected) c.accent.copy(alpha = 0.12f) else c.surf)
+            .border(
+                width = if (selected) 1.5.dp else 1.dp,
+                color = if (selected) c.accent else c.bd,
+                shape = RoundedCornerShape(13.dp),
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            KText(icon, size = 20)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                KText(label, size = 15, color = if (selected) c.accent else c.txt, weight = FontWeight.SemiBold)
+                KText(sub, size = 12, color = if (selected) c.accent.copy(alpha = 0.7f) else c.txtD)
+            }
+        }
+        if (selected) {
+            Box(
+                Modifier
+                    .size(20.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(c.accent),
+                contentAlignment = Alignment.Center,
+            ) {
+                KText("✓", size = 12, color = Color.White, weight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/** Pill-shaped on/off indicator — purely decorative, the whole row is tappable. */
+@Composable
+private fun TogglePill(on: Boolean) {
+    val c = KetoTheme.colors
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (on) c.accent else c.bdI)
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+    ) {
+        KText(if (on) "ON" else "OFF", size = 11, color = if (on) Color.White else c.txtM, weight = FontWeight.Bold)
     }
 }
 
@@ -659,9 +747,7 @@ private fun SettingsAppearancePage(vm: AppViewModel, onTheme: () -> Unit, onBack
                     "🎨 Choose Theme",
                     subtitle = if (vm.autoThemeEnabled) "Auto — follows system dark/light mode"
                     else "Currently: ${vm.themeId}",
-                ) {
-                    onTheme()
-                }
+                ) { onTheme() }
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -713,12 +799,10 @@ private fun ImportConfirmDialog(
         ) {
             KText("📥 Import data?", size = 17, color = c.gold, weight = FontWeight.Bold)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (pending.newCount > 0) {
+                if (pending.newCount > 0)
                     KText("• ${pending.newCount} new day(s) will be added", size = 14, color = c.txt)
-                }
-                if (pending.dupCount > 0) {
+                if (pending.dupCount > 0)
                     KText("• ${pending.dupCount} day(s) already exist — choose how to handle them below", size = 14, color = c.txt)
-                }
             }
             if (pending.dupCount > 0) {
                 DialogOption("Merge — fill empty fields only", "Existing values are kept; gaps are filled from the import") { onConfirm(ImportMode.MERGE) }
@@ -727,15 +811,7 @@ private fun ImportConfirmDialog(
             } else {
                 DialogOption("Import", "Add ${pending.newCount} day(s) to your log") { onConfirm(ImportMode.SKIP) }
             }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { onCancel() }
-                    .padding(vertical = 6.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                KText("Cancel", size = 14, color = c.txtM, weight = FontWeight.SemiBold)
-            }
+            DialogCancelButton { onCancel() }
         }
     }
 }
@@ -755,6 +831,20 @@ private fun DialogOption(title: String, subtitle: String, onClick: () -> Unit) {
     ) {
         KText(title, size = 14, color = c.txt, weight = FontWeight.SemiBold)
         KText(subtitle, size = 12, color = c.txtM)
+    }
+}
+
+@Composable
+private fun DialogCancelButton(onCancel: () -> Unit) {
+    val c = KetoTheme.colors
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onCancel() }
+            .padding(vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        KText("Cancel", size = 14, color = c.txtM, weight = FontWeight.SemiBold)
     }
 }
 
@@ -795,7 +885,7 @@ private fun SettingsSubHeader(title: String, onBack: () -> Unit) {
     }
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Reusable sub-components ───────────────────────────────────────────────────
 
 @Composable
 private fun NavRow(icon: String, label: String, sub: String?, onClick: () -> Unit) {
@@ -875,9 +965,7 @@ private fun SettingsButton(
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         KText(title, size = 15, color = if (enabled) c.txt else c.txtD, weight = FontWeight.SemiBold)
-        if (subtitle != null) {
-            KText(subtitle, size = 12, color = c.txtD)
-        }
+        if (subtitle != null) KText(subtitle, size = 12, color = c.txtD)
     }
 }
 
@@ -911,6 +999,90 @@ private fun InfoBanner(text: String) {
 }
 
 @Composable
+private fun SelectChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val c = KetoTheme.colors
+    Box(
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) c.accent.copy(alpha = 0.15f) else c.surf)
+            .border(1.5.dp, if (selected) c.accent else c.bdI, RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        KText(label, size = 14, color = if (selected) c.accent else c.txtM, weight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun RemovableChip(label: String, onRemove: () -> Unit) {
+    val c = KetoTheme.colors
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(c.surf)
+            .border(1.dp, c.bd, RoundedCornerShape(20.dp))
+            .padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        KText(label, size = 14, color = c.txt)
+        Box(
+            Modifier
+                .size(20.dp)
+                .clip(RoundedCornerShape(50))
+                .background(c.bdI)
+                .clickable { onRemove() },
+            contentAlignment = Alignment.Center,
+        ) {
+            KText("×", size = 14, color = c.txtM, weight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun SmallActionButton(label: String, color: Color, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.12f))
+            .border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        KText(label, size = 13, color = color, weight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun SingleLineInput(value: String, onValueChange: (String) -> Unit, placeholder: String) {
+    val c = KetoTheme.colors
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.inp)
+            .border(1.dp, c.bd, RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        if (value.isEmpty()) KText(placeholder, size = 15, color = c.txtD)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(color = c.txt, fontSize = 15.sp),
+            cursorBrush = SolidColor(c.accent),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
 private fun StorageBar(stats: StorageStats?) {
     val c = KetoTheme.colors
     Column(
@@ -935,7 +1107,7 @@ private fun StorageBar(stats: StorageStats?) {
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(c.surf2)
+                .background(c.surf2),
         ) {
             val pct = stats?.pct ?: 0f
             if (pct > 0f) {
@@ -944,7 +1116,7 @@ private fun StorageBar(stats: StorageStats?) {
                         .fillMaxWidth(pct)
                         .height(6.dp)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(c.accent)
+                        .background(c.accent),
                 )
             }
         }
@@ -959,5 +1131,14 @@ private fun StorageBar(stats: StorageStats?) {
     }
 }
 
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
 private fun formatKB(kb: Int): String =
     if (kb >= 1024) "%.1f MB".format(kb / 1024f) else "$kb KB"
+
+private fun hourLabel(hour: Int): String = when (hour) {
+    8 -> "Morning (8 AM)"
+    14 -> "Afternoon (2 PM)"
+    20 -> "Evening (8 PM)"
+    else -> "%02d:00".format(hour)
+}

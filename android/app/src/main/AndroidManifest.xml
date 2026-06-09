@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Required to post notifications on Android 13+ (API 33). Below API 33 the
+         system grants notification permission automatically. We request it at
+         runtime from the Notifications settings page. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Lets the system camera app resolve for ActivityResultContracts.TakePicture()
          on Android 11+ (package-visibility requirement). No CAMERA permission is
          needed — capture is fully delegated to whatever camera app the user has. -->

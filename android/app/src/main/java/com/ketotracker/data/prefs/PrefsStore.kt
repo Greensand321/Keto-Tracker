@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ketotracker.data.SnapshotMeta
@@ -119,6 +120,25 @@ class PrefsStore(context: Context) {
         ds.edit { prefs -> prefs[BACKUP_FREQ_KEY] = freq }
     }
 
+    // ── Notifications ─────────────────────────────────────────────────────────
+
+    val notificationsEnabled: Flow<Boolean> = ds.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> prefs[NOTIF_ENABLED_KEY] ?: false }
+
+    suspend fun setNotificationsEnabled(enabled: Boolean) {
+        ds.edit { prefs -> prefs[NOTIF_ENABLED_KEY] = enabled }
+    }
+
+    /** Hour of day (0–23) for the daily reminder. Default 20 = 8 PM. */
+    val notificationHour: Flow<Int> = ds.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> prefs[NOTIF_HOUR_KEY] ?: 20 }
+
+    suspend fun setNotificationHour(hour: Int) {
+        ds.edit { prefs -> prefs[NOTIF_HOUR_KEY] = hour }
+    }
+
     // ── Keys ─────────────────────────────────────────────────────────────────
 
     companion object {
@@ -130,5 +150,7 @@ class PrefsStore(context: Context) {
         private val QUICK_SELECT_KEY   = stringPreferencesKey("quick_select")
         private val BACKUP_ENABLED_KEY = booleanPreferencesKey("backup_enabled")
         private val BACKUP_FREQ_KEY    = stringPreferencesKey("backup_frequency")
+        private val NOTIF_ENABLED_KEY  = booleanPreferencesKey("notif_enabled")
+        private val NOTIF_HOUR_KEY     = intPreferencesKey("notif_hour")
     }
 }
