@@ -29,6 +29,7 @@ import com.ketotracker.data.io.SnapshotStore
 import com.ketotracker.data.io.StorageStats
 import com.ketotracker.data.io.StorageUsage
 import com.ketotracker.data.io.ZipPortability
+import com.ketotracker.data.notifications.NotificationHelper
 import com.ketotracker.data.photo.MAX_MEAL_PHOTOS
 import com.ketotracker.data.photo.MealPhoto
 import com.ketotracker.data.photo.PhotoSaveResult
@@ -38,6 +39,7 @@ import com.ketotracker.data.repository.DayRepository
 import com.ketotracker.data.repository.FakeDayRepository
 import com.ketotracker.data.repository.IDayRepository
 import com.ketotracker.work.BackupWorker
+import com.ketotracker.work.ReminderWorker
 import java.io.File
 import java.time.LocalTime
 
@@ -127,6 +129,12 @@ class AppViewModel(
     var backupFrequency by mutableStateOf("daily")
         private set
 
+    // ── Notifications ─────────────────────────────────────────────────────────
+    var notificationsEnabled by mutableStateOf(false)
+        private set
+    var notificationHour by mutableStateOf(20)
+        private set
+
     init {
         // Observe the persisted theme preferences.
         if (prefs != null) {
@@ -142,6 +150,8 @@ class AppViewModel(
             }
             viewModelScope.launch { prefs.backupEnabled.collect { on -> backupEnabled = on } }
             viewModelScope.launch { prefs.backupFrequency.collect { freq -> backupFrequency = freq } }
+            viewModelScope.launch { prefs.notificationsEnabled.collect { on -> notificationsEnabled = on } }
+            viewModelScope.launch { prefs.notificationHour.collect { h -> notificationHour = h } }
         }
 
         // Load the full log ONCE. allEntries is then a plain in-memory cache
@@ -633,6 +643,36 @@ class AppViewModel(
         viewModelScope.launch {
             runCatching { prefs?.setBackupFrequency(freq) }
             if (backupEnabled) BackupWorker.schedule(context, if (freq == "weekly") 7L else 1L)
+        }
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────────────
+
+    /**
+     * Enables or disables the daily reminder. When enabling, creates the
+     * notification channel (safe to call repeatedly — Android no-ops it) and
+     * schedules the WorkManager reminder. Caller must have already obtained
+     * POST_NOTIFICATIONS permission on Android 13+ before calling with true.
+     */
+    fun setNotificationsEnabled(context: Context, enabled: Boolean) {
+        notificationsEnabled = enabled
+        viewModelScope.launch {
+            runCatching { prefs?.setNotificationsEnabled(enabled) }
+            if (enabled) {
+                NotificationHelper.createChannel(context)
+                ReminderWorker.schedule(context, notificationHour)
+            } else {
+                ReminderWorker.cancel(context)
+            }
+        }
+    }
+
+    /** Changes the reminder hour, rescheduling the worker if notifications are on. */
+    fun setNotificationHour(context: Context, hour: Int) {
+        notificationHour = hour
+        viewModelScope.launch {
+            runCatching { prefs?.setNotificationHour(hour) }
+            if (notificationsEnabled) ReminderWorker.schedule(context, hour)
         }
     }
 
