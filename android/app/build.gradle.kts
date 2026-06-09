@@ -65,6 +65,9 @@ dependencies {
     // DataStore — persists theme + preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
+    // WorkManager — periodic JSON backup
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
     // kotlinx.serialization — DayEntry ↔ JSON for the Room data column
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 

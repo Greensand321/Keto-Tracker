@@ -21,11 +21,14 @@ import com.ketotracker.data.DateUtils
 import com.ketotracker.data.DayEntry
 import com.ketotracker.data.Heart
 import com.ketotracker.data.Meal
+import com.ketotracker.data.SnapshotMeta
 import com.ketotracker.data.Step
 import com.ketotracker.data.db.KetoDatabase
 import com.ketotracker.data.io.DataPortability
+import com.ketotracker.data.io.SnapshotStore
 import com.ketotracker.data.io.StorageStats
 import com.ketotracker.data.io.StorageUsage
+import com.ketotracker.data.io.ZipPortability
 import com.ketotracker.data.photo.MAX_MEAL_PHOTOS
 import com.ketotracker.data.photo.MealPhoto
 import com.ketotracker.data.photo.PhotoSaveResult
@@ -34,6 +37,7 @@ import com.ketotracker.data.prefs.PrefsStore
 import com.ketotracker.data.repository.DayRepository
 import com.ketotracker.data.repository.FakeDayRepository
 import com.ketotracker.data.repository.IDayRepository
+import com.ketotracker.work.BackupWorker
 import java.io.File
 import java.time.LocalTime
 
@@ -41,6 +45,7 @@ class AppViewModel(
     private val repo: IDayRepository,
     private val prefs: PrefsStore?,
     private val photoStore: PhotoStore? = null,
+    private val snapshotStore: SnapshotStore? = null,
 ) : ViewModel() {
 
     var themeId by mutableStateOf("midnight")
@@ -98,12 +103,28 @@ class AppViewModel(
         private set
     private var pendingNewEntries: Map<String, DayEntry> = emptyMap()
     private var pendingDupEntries: Map<String, DayEntry> = emptyMap()
+    // Non-empty when the import came from a ZIP file — photos are restored after entries are committed.
+    private var pendingZipPhotos: Map<String, ByteArray> = emptyMap()
 
     // Populated on demand by `loadStorageStats` — native counterpart of the
     // web app's `getStorageStats()` (see CLAUDE.md "Data Access"). Sizing the
     // database file and walking the photo directory does real disk I/O, so we
     // compute it lazily when Settings opens rather than keeping it live.
     var storageStats by mutableStateOf<StorageStats?>(null)
+        private set
+
+    // ── Snapshots ────────────────────────────────────────────────────────────
+    var snapshots by mutableStateOf<List<SnapshotMeta>>(emptyList())
+        private set
+
+    // ── Quick-select ─────────────────────────────────────────────────────────
+    var quickSelectItems by mutableStateOf(DEFAULT_QUICK_FOODS)
+        private set
+
+    // ── Periodic backup ───────────────────────────────────────────────────────
+    var backupEnabled by mutableStateOf(false)
+        private set
+    var backupFrequency by mutableStateOf("daily")
         private set
 
     init {
@@ -113,6 +134,14 @@ class AppViewModel(
             viewModelScope.launch { prefs.autoThemeEnabled.collect { on -> autoThemeEnabled = on } }
             viewModelScope.launch { prefs.darkAutoTheme.collect { id -> darkAutoThemeId = id } }
             viewModelScope.launch { prefs.lightAutoTheme.collect { id -> lightAutoThemeId = id } }
+            viewModelScope.launch { prefs.snapshots.collect { snaps -> snapshots = snaps } }
+            viewModelScope.launch {
+                prefs.quickSelectItems.collect { items ->
+                    quickSelectItems = items.ifEmpty { DEFAULT_QUICK_FOODS }
+                }
+            }
+            viewModelScope.launch { prefs.backupEnabled.collect { on -> backupEnabled = on } }
+            viewModelScope.launch { prefs.backupFrequency.collect { freq -> backupFrequency = freq } }
         }
 
         // Load the full log ONCE. allEntries is then a plain in-memory cache
@@ -132,6 +161,12 @@ class AppViewModel(
     // ── Companion: factories ─────────────────────────────────────────────────
 
     companion object {
+        /** Default quick-select food chips — mirrors QUICK_FOODS in Sheets.kt. */
+        val DEFAULT_QUICK_FOODS = listOf(
+            "Eggs", "Bacon", "Chicken", "Steak", "Salmon", "Avocado", "Cheddar", "HM Mayo",
+            "Sourdough", "Broccoli", "Cauliflower", "Almonds", "Coffee", "Butter", "Cream", "Olive Oil",
+        )
+
         /** Production factory — wires Room + DataStore. */
         fun factory(app: Application): ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -139,7 +174,8 @@ class AppViewModel(
                 val repo = DayRepository(db.dayEntryDao())
                 val prefs = PrefsStore(app)
                 val photoStore = PhotoStore(app)
-                AppViewModel(repo, prefs, photoStore)
+                val snapshotStore = SnapshotStore(app)
+                AppViewModel(repo, prefs, photoStore, snapshotStore)
             }
         }
 
@@ -401,6 +437,32 @@ class AppViewModel(
         }
     }
 
+    // ── Full ZIP backup ───────────────────────────────────────────────────────
+
+    fun exportFullBackup(context: Context, uri: Uri) {
+        val store = photoStore ?: return
+        val snapshot = allEntries
+        viewModelScope.launch {
+            val ok = ZipPortability.export(context, uri, snapshot, store)
+            if (ok) notify("Full backup exported — ${snapshot.size} day(s) + photos ✓")
+            else notify("Export failed")
+        }
+    }
+
+    fun importFromZip(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val result = ZipPortability.import(context, uri)
+            if (result == null) { notify("Could not read backup file"); return@launch }
+            if (result.entries.isEmpty()) { notify("No valid entries found in backup"); return@launch }
+            pendingZipPhotos = result.photos
+            val newEntries = result.entries.filterKeys { it !in allEntries }
+            val dupEntries = result.entries.filterKeys { it in allEntries }
+            pendingNewEntries = newEntries
+            pendingDupEntries = dupEntries
+            pendingImport = PendingImport(newCount = newEntries.size, dupCount = dupEntries.size)
+        }
+    }
+
     /**
      * Resolves the pending import with the chosen [mode] for duplicate days
      * (new days are always written, mirroring the web app), bulk-persists the
@@ -410,9 +472,11 @@ class AppViewModel(
     fun confirmImport(mode: ImportMode) {
         val newEntries = pendingNewEntries
         val dupEntries = pendingDupEntries
+        val zipPhotos = pendingZipPhotos
         pendingImport = null
         pendingNewEntries = emptyMap()
         pendingDupEntries = emptyMap()
+        pendingZipPhotos = emptyMap()
 
         viewModelScope.launch {
             val toWrite = LinkedHashMap<String, DayEntry>(newEntries)
@@ -437,6 +501,14 @@ class AppViewModel(
                         else -> " · ${dupEntries.size} duplicate${if (dupEntries.size != 1) "s" else ""} skipped"
                     }
                     notify("Imported $n day${if (n != 1) "s" else ""}$note ✓")
+
+                    // Restore photos from ZIP import
+                    if (zipPhotos.isNotEmpty() && photoStore != null) {
+                        val restored = zipPhotos.count { (filename, bytes) ->
+                            photoStore.restorePhoto(filename, bytes)
+                        }
+                        if (restored > 0) { photoTick++; notify("Restored $restored photo(s) ✓") }
+                    }
                 }
                 .onFailure { reportError("Import failed", it) }
         }
@@ -446,6 +518,7 @@ class AppViewModel(
         pendingImport = null
         pendingNewEntries = emptyMap()
         pendingDupEntries = emptyMap()
+        pendingZipPhotos = emptyMap()
     }
 
     /**
@@ -457,6 +530,109 @@ class AppViewModel(
         val store = photoStore ?: return
         viewModelScope.launch {
             storageStats = StorageUsage.compute(context, store, allEntries.size)
+        }
+    }
+
+    // ── Snapshots ─────────────────────────────────────────────────────────────
+    // Named point-in-time backups (up to 25), mirroring the web app's snapshot
+    // system (CLAUDE.md "Snapshot Schema"). Metadata is persisted in DataStore;
+    // full entry data lives as separate files in filesDir/snapshots/.
+
+    fun saveSnapshot(name: String) {
+        val store = snapshotStore ?: return
+        viewModelScope.launch {
+            val entries = allEntries
+            val id = System.currentTimeMillis()
+            val saved = store.save(id, entries)
+            if (!saved) { notify("Could not save snapshot"); return@launch }
+            val label = name.trim().ifEmpty { "Snapshot" }
+            val meta = SnapshotMeta(id = id, name = label, ts = id, days = entries.size)
+            val updated = (snapshots + meta).takeLast(25)
+            runCatching { prefs?.setSnapshots(updated) }
+            snapshots = updated
+            notify("Snapshot \"$label\" saved — ${entries.size} day(s) ✓")
+        }
+    }
+
+    /** Replaces all current day data with the snapshot. The UI must confirm before calling this. */
+    fun restoreSnapshot(id: Long) {
+        val store = snapshotStore ?: return
+        viewModelScope.launch {
+            val entries = store.load(id)
+            if (entries == null) { notify("Snapshot data not found"); return@launch }
+            runCatching { repo.deleteAll() }
+                .onFailure { reportError("Could not clear existing data", it); return@launch }
+            runCatching { repo.saveAll(entries.values.toList()) }
+                .onSuccess {
+                    allEntries = entries
+                    // Navigate to today so defStep has the right viewedKey context.
+                    val today = DateUtils.todayKey()
+                    viewedKey = today
+                    val todayEntry = loadDateEntry(today)
+                    entry = todayEntry
+                    stepIndex = defStep(todayEntry)
+                    notify("Restored ${entries.size} day(s) ✓")
+                }
+                .onFailure { reportError("Restore failed", it) }
+        }
+    }
+
+    fun deleteSnapshot(id: Long) {
+        val store = snapshotStore ?: return
+        viewModelScope.launch {
+            store.delete(id)
+            val updated = snapshots.filter { it.id != id }
+            runCatching { prefs?.setSnapshots(updated) }
+            snapshots = updated
+            notify("Snapshot deleted")
+        }
+    }
+
+    fun exportSnapshot(context: Context, uri: Uri, id: Long) {
+        val store = snapshotStore ?: return
+        viewModelScope.launch {
+            val ok = store.writeTo(context, id, uri)
+            if (ok) notify("Snapshot exported ✓") else notify("Export failed")
+        }
+    }
+
+    // ── Quick-select ──────────────────────────────────────────────────────────
+
+    fun addQuickSelectItem(food: String) {
+        val trimmed = food.trim()
+        if (trimmed.isEmpty() || trimmed in quickSelectItems) return
+        val updated = quickSelectItems + trimmed
+        quickSelectItems = updated
+        viewModelScope.launch { runCatching { prefs?.setQuickSelectItems(updated) } }
+    }
+
+    fun removeQuickSelectItem(food: String) {
+        val updated = quickSelectItems - food
+        quickSelectItems = updated
+        viewModelScope.launch { runCatching { prefs?.setQuickSelectItems(updated) } }
+    }
+
+    fun resetQuickSelectDefaults() {
+        quickSelectItems = DEFAULT_QUICK_FOODS
+        viewModelScope.launch { runCatching { prefs?.setQuickSelectItems(DEFAULT_QUICK_FOODS) } }
+    }
+
+    // ── Periodic backup ───────────────────────────────────────────────────────
+
+    fun setBackupEnabled(context: Context, enabled: Boolean) {
+        backupEnabled = enabled
+        viewModelScope.launch {
+            runCatching { prefs?.setBackupEnabled(enabled) }
+            if (enabled) BackupWorker.schedule(context, if (backupFrequency == "weekly") 7L else 1L)
+            else BackupWorker.cancel(context)
+        }
+    }
+
+    fun setBackupFrequency(context: Context, freq: String) {
+        backupFrequency = freq
+        viewModelScope.launch {
+            runCatching { prefs?.setBackupFrequency(freq) }
+            if (backupEnabled) BackupWorker.schedule(context, if (freq == "weekly") 7L else 1L)
         }
     }
 

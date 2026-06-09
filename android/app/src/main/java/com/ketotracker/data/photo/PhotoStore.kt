@@ -75,6 +75,18 @@ class PhotoStore(context: Context) {
         files.sumOf { it.length() } to files.size
     }
 
+    /** All photo files — used by ZIP export to bundle every stored JPEG. */
+    fun listAllPhotoFiles(): List<File> =
+        (dir.listFiles { f -> f.isFile && f.extension == "jpg" } ?: emptyArray()).toList()
+
+    /** Writes [bytes] to the photos directory under [filename] — used by ZIP restore.
+     * Skips existing files to protect photos the user has taken since the backup was made. */
+    suspend fun restorePhoto(filename: String, bytes: ByteArray): Boolean = withContext(Dispatchers.IO) {
+        val target = File(dir, filename)
+        if (target.exists()) return@withContext false
+        runCatching { target.writeBytes(bytes) }.isSuccess
+    }
+
     // ── Compression: decode → EXIF-correct → downscale → JPEG-encode ─────────
 
     private fun compress(file: File): ByteArray? = runCatching {

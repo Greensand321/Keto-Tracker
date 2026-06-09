@@ -209,7 +209,7 @@ fun QuickSelectSheet(vm: AppViewModel, meal: Meal, onClose: () -> Unit) {
         ) {
             KText("Tap items to add them to this meal.", size = 13, color = c.txtM)
             FlowChips {
-                QUICK_FOODS.forEach { food ->
+                vm.quickSelectItems.forEach { food ->
                     FoodChip(food, selected = food in selected) { toggle(food) }
                 }
             }
@@ -231,11 +231,6 @@ private fun FoodChip(label: String, selected: Boolean, onClick: () -> Unit) {
         KText(label, size = 15, color = if (selected) c.accent else c.txt, weight = FontWeight.SemiBold)
     }
 }
-
-private val QUICK_FOODS = listOf(
-    "Eggs", "Bacon", "Chicken", "Steak", "Salmon", "Avocado", "Cheddar", "HM Mayo",
-    "Sourdough", "Broccoli", "Cauliflower", "Almonds", "Coffee", "Butter", "Cream", "Olive Oil",
-)
 
 /** Simple wrapping row of chips using FlowRow. */
 @Composable
