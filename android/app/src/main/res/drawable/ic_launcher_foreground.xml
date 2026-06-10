@@ -1,15 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Empty foreground layer — the new app icon (icon.png at the repo root) is a
+    single full-bleed illustration used as the adaptive icon's background
+    layer (see drawable-*dpi/ic_launcher_background.png), so no separate
+    foreground artwork is needed.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Avocado body, kept inside the 72dp adaptive-icon safe zone -->
-    <path
-        android:fillColor="#5cb85c"
-        android:pathData="M54,30 C66,30 74,40 74,54 C74,70 65,82 54,82 C43,82 34,70 34,54 C34,40 42,30 54,30 Z" />
-    <!-- Pit -->
-    <path
-        android:fillColor="#f5c842"
-        android:pathData="M54,52 m-11,0 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0" />
-</vector>
+    android:viewportHeight="108" />
