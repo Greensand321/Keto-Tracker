@@ -276,6 +276,12 @@ Two small features that round out Settings parity with the web app's
 - **Gestures**: horizontal drags are accumulated as `totalDrag` and evaluated
   once on `onDragEnd` (>50dp triggers step/day navigation), avoiding the
   per-frame-delta bug where small thresholds never fire on a normal swipe.
+- **System back button/gesture**: a `BackHandler` in `WizardScreen` steps
+  back through the UI instead of immediately exiting — closes the photo
+  viewer, then any open overlay, then returns to today from a past day, then
+  walks back through the wizard one step at a time. It's only disabled (so
+  the system default exit/minimize applies) when the user is at today's
+  first step with nothing else open — i.e. "home".
 
 ---
 

@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ketotracker.ui.theme.KetoTheme
 
@@ -94,6 +95,18 @@ private fun PillButton(
         modifier = m.clickable { onClick() }.padding(padding),
         contentAlignment = Alignment.Center,
     ) {
-        KText(text, size = 17, color = textColor, weight = weight)
+        // Single line, never wraps — keeps every action-row button the same
+        // height regardless of label length (e.g. "Next →" vs "🥑 Keto"),
+        // letting it overflow the padding slightly rather than wrapping to a
+        // taller two-line layout.
+        KText(
+            text,
+            size = 17,
+            color = textColor,
+            weight = weight,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
+        )
     }
 }
