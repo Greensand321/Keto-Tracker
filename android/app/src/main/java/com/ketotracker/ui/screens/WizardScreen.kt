@@ -382,6 +382,7 @@ private fun ActionRow(vm: AppViewModel) {
             .fillMaxWidth()
             .padding(top = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         if (vm.stepIndex > 0) BackButton { vm.back() }
         PrimaryButton(
