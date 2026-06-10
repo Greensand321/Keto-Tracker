@@ -1,5 +1,6 @@
 package com.ketotracker.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -85,6 +86,21 @@ fun WizardScreen(vm: AppViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(vm) {
         vm.messages.collect { message -> snackbarHostState.showSnackbar(message) }
+    }
+
+    // Back press/gesture steps out of whatever is on top first — closing the
+    // photo viewer, then any overlay, then returning to today from a past
+    // day, then walking back through the wizard — only falling through to
+    // the system default (exit/minimize) once we're at today's first step
+    // with nothing else open, i.e. "home".
+    val canGoBack = viewingPhoto != null || overlay != Overlay.NONE || !vm.isToday || vm.stepIndex > 0
+    BackHandler(enabled = canGoBack) {
+        when {
+            viewingPhoto != null -> viewingPhoto = null
+            overlay != Overlay.NONE -> overlay = Overlay.NONE
+            !vm.isToday -> vm.goToday()
+            vm.stepIndex > 0 -> vm.back()
+        }
     }
 
     Box(
