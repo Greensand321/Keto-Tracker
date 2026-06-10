@@ -182,6 +182,19 @@ swallows its own touch events).
 - Because `vm.jumpTo()` already falls back to a blank `DayEntry` for
   unlogged dates, the calendar doubles as the "jump to an arbitrary date"
   picker the Overview list couldn't provide — closing that parity gap too.
+- **Month/year picker**: tapping the "Month Year ▾" header label (the native
+  counterpart of the web app's `#calPicker`/`openCalPicker()`) swaps the
+  header/grid for `CalMonthYearPicker` — two scroll-snapped wheels (`MONTH`,
+  `YEAR`) for fast multi-year navigation. Each `WheelColumn` is a `LazyColumn`
+  with `rememberSnapFlingBehavior(listState, SnapPosition.Center)` and
+  content padding of two row-heights so the centred row sits under the
+  highlight band; `rememberCenteredIndex()` tracks which row is centred,
+  mirroring the web picker's `onCpkrScroll()` snap-detection. The year range
+  is `min(yearsWithData)..currentYear+5` (or `currentYear-5..currentYear+5`
+  if nothing's logged yet), with years that have no data dimmed but still
+  selectable — same as web. "Go →" jumps the grid to the centred month/year
+  and closes; "Go to Today" jumps straight to the current month/year and
+  closes immediately, matching `pickerGoToday()`.
 
 ### Export / Import — Storage Access Framework + JSON
 
