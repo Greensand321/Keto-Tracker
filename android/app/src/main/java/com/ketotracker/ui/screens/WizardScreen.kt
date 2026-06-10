@@ -251,16 +251,31 @@ private const val STEP_TRANSITION_MS = 260
 @Composable
 private fun StepTransition(stepIndex: Int, dayKey: String, content: @Composable () -> Unit) {
     val target = stepIndex to dayKey
-    var previous by remember { mutableStateOf(target) }
-    var forward by remember { mutableStateOf(true) }
-    val progress = remember { Animatable(1f) }
 
+    // Plain (non-State) holders — they only need to persist the previous
+    // target/first-run flag across recompositions, and must NOT themselves
+    // trigger one (unlike mutableStateOf, which caused an extra frame here).
+    val previousTarget = remember { arrayOf(target) }
+    val isFirst = remember { booleanArrayOf(true) }
+
+    val forward = remember(target) {
+        val (prevStep, prevDay) = previousTarget[0]
+        val dir = if (dayKey != prevDay) dayKey > prevDay else stepIndex > prevStep
+        previousTarget[0] = target
+        dir
+    }
+
+    // A fresh Animatable per target starts pre-offset/transparent on the very
+    // first frame the new content is composed (except on initial app launch,
+    // which renders in place with no animation). Previously a single
+    // Animatable(1f) was reset via a post-composition snapTo(0f) inside
+    // LaunchedEffect, leaving one frame where the new step flashed fully
+    // visible before snapping away and animating back in.
+    val progress = remember(target) { Animatable(if (isFirst[0]) 1f else 0f) }
     LaunchedEffect(target) {
-        if (target != previous) {
-            val (prevStep, prevDay) = previous
-            forward = if (dayKey != prevDay) dayKey > prevDay else stepIndex > prevStep
-            previous = target
-            progress.snapTo(0f)
+        if (isFirst[0]) {
+            isFirst[0] = false
+        } else {
             progress.animateTo(1f, tween(STEP_TRANSITION_MS, easing = FastOutSlowInEasing))
         }
     }
