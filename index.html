@@ -64,6 +64,7 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSys
 .dot.active{background:var(--accent);width:22px;border-radius:4px}
 
 .card{background:var(--surf);border:1px solid var(--bd);border-radius:20px;padding:24px 20px;display:flex;flex-direction:column;gap:18px;backdrop-filter:blur(8px)}
+.card-meal{gap:9px;padding:14px 18px}
 .step-lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:2px;color:var(--txt-m)}
 .step-title{font-size:1.9rem;font-weight:800;line-height:1.1;color:var(--gold)}
 .step-sub{font-size:.9rem;color:var(--txt-m);margin-top:4px}
@@ -78,6 +79,59 @@ textarea::placeholder{color:var(--txt-d)}
 .r-btn.sel{border-color:var(--accent);background:rgba(92,184,92,.12);color:var(--accent)}
 .r-btn.sel .rlbl{color:var(--accent)}
 .r-btn:active{transform:scale(.94)}
+
+/* Combined ratings step */
+.ratings-block{display:flex;flex-direction:column;gap:14px}
+.rate-row-lbl{font-size:.78rem;font-weight:600;color:var(--txt-m);text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px}
+.r-grid-sm{display:flex;gap:6px}
+.r-btn-sm{flex:1;height:52px;border-radius:12px;border:2px solid var(--bd);background:var(--inp);color:var(--txt);font-size:1.05rem;font-weight:800;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:.2s;font-family:inherit}
+.r-btn-sm .rlbl{font-size:.52rem;font-weight:500;color:var(--txt-m);text-transform:uppercase;letter-spacing:.7px}
+.r-btn-sm.sel{border-color:var(--accent);background:rgba(92,184,92,.12);color:var(--accent)}
+.r-btn-sm.sel .rlbl{color:var(--accent)}
+.r-btn-sm:active{transform:scale(.94)}
+
+/* Heart health step */
+.heart-btns{display:flex;gap:8px;margin-top:4px}
+.heart-btn{flex:1;padding:18px 8px;border-radius:14px;border:2px solid var(--bd);background:var(--inp);color:var(--txt);font-size:1.5rem;font-weight:700;cursor:pointer;transition:.2s;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:6px}
+.heart-btn span{font-size:.8rem;font-weight:600;color:var(--txt-m)}
+.heart-btn:active{transform:scale(.94)}
+.heart-btn.sel-good{border-color:var(--accent);background:rgba(92,184,92,.12)}.heart-btn.sel-good span{color:var(--accent)}
+.heart-btn.sel-mild{border-color:var(--gold);background:rgba(245,200,66,.12)}.heart-btn.sel-mild span{color:var(--gold)}
+.heart-btn.sel-bad{border-color:var(--red);background:rgba(224,82,82,.12)}.heart-btn.sel-bad span{color:var(--red)}
+.heart-notes{margin-top:12px}
+
+/* Quick-select overlay */
+.qs-overlay{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
+.qs-overlay.open{transform:translateY(0)}
+.qs-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.qs-title{font-size:1.05rem;font-weight:700}
+.qs-hdr-acts{display:flex;gap:6px;align-items:center}
+.qs-hdr-btn{background:var(--surf2);border:1px solid var(--bd);color:var(--txt-m);border-radius:8px;padding:5px 11px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s;letter-spacing:.3px}
+.qs-hdr-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(92,184,92,.1)}
+.qs-body{flex:1;overflow-y:auto;padding:16px}
+.qs-grid{display:flex;flex-wrap:wrap;gap:10px}
+.qs-chip{padding:10px 16px;border-radius:20px;border:1.5px solid var(--bd-i);background:var(--surf);color:var(--txt);font-size:.95rem;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit}
+.qs-chip:active{background:var(--surf2);transform:scale(.95)}
+.qs-chip.sel{border-color:var(--accent);background:rgba(92,184,92,.15);color:var(--accent)}
+.qs-list{display:flex;flex-direction:column;gap:8px}
+.qs-item{display:flex;align-items:center;gap:10px;background:var(--surf);border:1.5px solid var(--bd);border-radius:12px;padding:13px 14px;user-select:none;touch-action:pan-x}
+.qs-handle{color:var(--txt-d);font-size:1.2rem;cursor:grab;flex-shrink:0;padding:2px 4px;touch-action:none}
+.qs-item-name{flex:1;font-size:.95rem;font-weight:600}
+.qs-item-del{background:none;border:none;color:var(--txt-d);cursor:pointer;font-size:1rem;padding:4px 6px;font-family:inherit}
+.qs-item.qs-dragging{opacity:.25}
+.qs-item.qs-drag-over{border-color:var(--accent);border-style:dashed}
+.qs-add-row{display:flex;gap:8px;padding:12px 16px 16px;flex-shrink:0;border-top:1px solid var(--bd)}
+
+/* Supplement chips */
+.supp-chip{position:relative;padding:10px 16px;border-radius:20px;border:1.5px solid var(--bd-i);background:var(--surf);color:var(--txt);font-size:.95rem;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit;user-select:none}
+.supp-chip.active{border-color:var(--accent);background:rgba(92,184,92,.15);color:var(--accent)}
+.supp-chip:active{transform:scale(.95)}
+.supp-count{position:absolute;top:-7px;right:-7px;background:var(--accent);color:#fff;border-radius:10px;font-size:.68rem;font-weight:800;padding:2px 6px;min-width:20px;text-align:center;pointer-events:none}
+.qs-open-btn{width:100%;background:var(--surf2);border:1px solid var(--bd);color:var(--txt-m);border-radius:10px;padding:9px 14px;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s;margin-top:8px}
+.qs-open-btn:active{transform:scale(.97)}
+
+/* Meal timestamp in summary */
+.sum-time{font-size:.72rem;color:var(--txt-d);margin-left:7px;font-weight:400}
 
 .tog-list{display:flex;flex-direction:column;gap:12px}
 .tog{display:flex;align-items:center;justify-content:space-between;background:var(--inp);border:2px solid var(--bd);border-radius:14px;padding:16px 18px;cursor:pointer;transition:.2s;gap:12px}
@@ -340,8 +394,33 @@ textarea::placeholder{color:var(--txt-d)}
   <div class="theme-grid" id="theme-grid"></div>
 </div>
 
+<div id="suppOverlay" class="qs-overlay">
+  <div class="qs-hdr">
+    <div class="qs-title" id="suppTitle">💊 Supplements</div>
+    <div class="qs-hdr-acts">
+      <button class="qs-hdr-btn" id="suppSortBtn" onclick="toggleSuppSort()">A-Z</button>
+      <button class="qs-hdr-btn" id="suppEditBtn" onclick="openSuppManage()">✎ Edit</button>
+      <button class="ico-btn" onclick="closeSupps()">✕</button>
+    </div>
+  </div>
+  <div class="qs-body" id="suppBody"></div>
+</div>
+
+<div id="qsOverlay" class="qs-overlay">
+  <div class="qs-hdr">
+    <div class="qs-title" id="qsTitle">⚡ Quick Select</div>
+    <div class="qs-hdr-acts">
+      <button class="qs-hdr-btn" id="qsSortBtn" onclick="toggleQsSort()">A-Z</button>
+      <button class="qs-hdr-btn" id="qsEditBtn" onclick="openQsManage()">✎ Edit</button>
+      <button class="ico-btn" onclick="closeQuickSel()">✕</button>
+    </div>
+  </div>
+  <div class="qs-body" id="qsBody"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 <input type="file" id="fileIn" accept=".json" style="display:none" onchange="handleImport(event)">
+<input type="file" id="zipIn"  accept=".zip"  style="display:none" onchange="handleZipImport(event)">
 <input type="file" id="camIn" accept="image/*" capture="environment" style="display:none" onchange="handleCamera(event)">
 
 <div id="photoModal" class="fs-modal">
@@ -358,6 +437,132 @@ textarea::placeholder{color:var(--txt-d)}
 const CAP = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform();
 const FS  = CAP ? Capacitor.Plugins.Filesystem : null;
 const Dir = 'DATA'; // FilesystemDirectory.Data → getFilesDir() on Android
+
+// ── ZIP UTILITY ───────────────────────────────────────────────────────────────
+// Minimal STORE-mode ZIP writer + reader. No external dependencies.
+// Only handles uncompressed files (JPEGs are already compressed; JSON is small).
+const _Zip = (() => {
+  // CRC-32 lookup table (standard IEEE 802.3 polynomial)
+  const _ct = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let j = 0; j < 8; j++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c;
+    }
+    return t;
+  })();
+  function _crc(d) {
+    let c = 0xffffffff;
+    for (let i = 0; i < d.length; i++) c = _ct[(c ^ d[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  const _enc = new TextEncoder();
+  const _dec = new TextDecoder();
+
+  // Pack [{path: string, data: Uint8Array}] → Blob (ZIP, STORE mode, no compression)
+  async function pack(entries) {
+    const parts = [], dir = [];
+    let off = 0;
+    for (const {path, data} of entries) {
+      const name = _enc.encode(path);
+      const crc = _crc(data), sz = data.length;
+      const lh = new Uint8Array(30 + name.length);
+      const lv = new DataView(lh.buffer);
+      lv.setUint32(0,  0x04034b50, true); // Local File Header signature
+      lv.setUint16(4,  20,         true); // version needed
+      lv.setUint16(6,  0,          true); // flags
+      lv.setUint16(8,  0,          true); // STORE (no compression)
+      lv.setUint16(10, 0,          true); // mod time
+      lv.setUint16(12, 0,          true); // mod date
+      lv.setUint32(14, crc,        true); // CRC-32
+      lv.setUint32(18, sz,         true); // compressed size
+      lv.setUint32(22, sz,         true); // uncompressed size
+      lv.setUint16(26, name.length,true); // filename length
+      lv.setUint16(28, 0,          true); // extra field length
+      lh.set(name, 30);
+      parts.push(lh, data);
+      dir.push({name, crc, sz, off});
+      off += 30 + name.length + sz;
+    }
+    // Central directory
+    const cdOff = off;
+    let cdSz = 0;
+    for (const {name, crc, sz, off: fOff} of dir) {
+      const cd = new Uint8Array(46 + name.length);
+      const cv = new DataView(cd.buffer);
+      cv.setUint32(0,  0x02014b50, true); // Central Directory File Header sig
+      cv.setUint16(4,  20,         true); // version made by
+      cv.setUint16(6,  20,         true); // version needed
+      cv.setUint16(8,  0,          true); // flags
+      cv.setUint16(10, 0,          true); // STORE
+      cv.setUint16(12, 0,          true); // mod time
+      cv.setUint16(14, 0,          true); // mod date
+      cv.setUint32(16, crc,        true); // CRC-32
+      cv.setUint32(20, sz,         true); // compressed size
+      cv.setUint32(24, sz,         true); // uncompressed size
+      cv.setUint16(28, name.length,true); // filename length
+      cv.setUint16(30, 0,          true); // extra length
+      cv.setUint16(32, 0,          true); // comment length
+      cv.setUint16(34, 0,          true); // disk start
+      cv.setUint16(36, 0,          true); // internal attributes
+      cv.setUint32(38, 0,          true); // external attributes
+      cv.setUint32(42, fOff,       true); // offset of local file header
+      cd.set(name, 46);
+      parts.push(cd);
+      cdSz += cd.length;
+    }
+    // End of Central Directory record
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0,  0x06054b50,  true); // EOCD signature
+    ev.setUint16(4,  0,           true); // disk number
+    ev.setUint16(6,  0,           true); // start disk
+    ev.setUint16(8,  dir.length,  true); // entries on this disk
+    ev.setUint16(10, dir.length,  true); // total entries
+    ev.setUint32(12, cdSz,        true); // central dir size
+    ev.setUint32(16, cdOff,       true); // central dir offset
+    ev.setUint16(20, 0,           true); // comment length
+    parts.push(eocd);
+    return new Blob(parts, {type: 'application/zip'});
+  }
+
+  // Unpack ZIP Blob → Map<path, Uint8Array>
+  async function unpack(blob) {
+    const buf = await blob.arrayBuffer();
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+    const out = new Map();
+    // Locate End of Central Directory by scanning backwards from the end
+    let eocdOff = -1;
+    for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65558); i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { eocdOff = i; break; }
+    }
+    if (eocdOff === -1) throw new Error('Not a valid ZIP file');
+    const total = view.getUint16(eocdOff + 10, true);
+    let pos = view.getUint32(eocdOff + 16, true);
+    for (let i = 0; i < total; i++) {
+      if (view.getUint32(pos, true) !== 0x02014b50) break;
+      const nameLen    = view.getUint16(pos + 28, true);
+      const extraLen   = view.getUint16(pos + 30, true);
+      const cmtLen     = view.getUint16(pos + 32, true);
+      const lhOff      = view.getUint32(pos + 42, true);
+      const name       = _dec.decode(bytes.subarray(pos + 46, pos + 46 + nameLen));
+      // Read data location from the local file header
+      const compSz     = view.getUint32(lhOff + 18, true);
+      const lhNameLen  = view.getUint16(lhOff + 26, true);
+      const lhExtraLen = view.getUint16(lhOff + 28, true);
+      const dataStart  = lhOff + 30 + lhNameLen + lhExtraLen;
+      if (!name.endsWith('/') && compSz > 0) {
+        out.set(name, bytes.slice(dataStart, dataStart + compSz));
+      }
+      pos += 46 + nameLen + extraLen + cmtLen;
+    }
+    return out;
+  }
+
+  return {pack, unpack};
+})();
 
 // ── STORAGE MODULE ────────────────────────────────────────────────────────────
 const Storage = (() => {
@@ -601,6 +806,46 @@ async function _migratePhotosFromIDB() {
   }catch(e){console.warn('Photo migration skipped (no prior IndexedDB data or error):',e);}
 }
 
+// ── PHOTO ENUMERATION ─────────────────────────────────────────────────────────
+// Returns [{date, meal, idx}] for every stored photo across all days + meals.
+// idx===null = legacy single-photo key; idx 0-4 = indexed multi-photo slots.
+// Used by both Storage.stats() (for size counting) and exportFullBackup().
+async function getAllPhotoPaths() {
+  const out = [];
+  const RE = /^(\d{4}-\d{2}-\d{2})_(breakfast|lunch|dinner)(?:_(\d+))?$/;
+  if (CAP) {
+    try {
+      const {files} = await FS.readdir({path:'photos', directory:Dir});
+      for (const f of files) {
+        const n = (typeof f==='string'?f:f.name).replace(/\.jpg$/i,'');
+        const m = n.match(RE);
+        if (m) out.push({date:m[1], meal:m[2], idx: m[3]!=null ? parseInt(m[3]) : null});
+      }
+    } catch(_) {}
+  } else {
+    // Web: cursor over IndexedDB keto-photos store
+    try {
+      const db = await new Promise((res,rej)=>{
+        const r=indexedDB.open('keto-photos',1);
+        r.onupgradeneeded=e=>e.target.result.createObjectStore('photos');
+        r.onsuccess=e=>res(e.target.result); r.onerror=rej;
+      });
+      await new Promise((res,rej)=>{
+        const tx=db.transaction('photos','readonly');
+        const req=tx.objectStore('photos').openCursor();
+        req.onsuccess=e=>{
+          const cur=e.target.result; if(!cur){res();return;}
+          const m=cur.primaryKey.match(RE);
+          if(m)out.push({date:m[1],meal:m[2],idx:m[3]!=null?parseInt(m[3]):null});
+          cur.continue();
+        };
+        req.onerror=rej;
+      });
+    } catch(_) {}
+  }
+  return out;
+}
+
 // ── THEME ────────────────────────────────────────────────────────────────────
 const THEMES=[
   {id:'midnight',name:'Midnight',emoji:'🌑',dark:true, bg:'#060d18',bar:'#0a1628'},
@@ -720,7 +965,7 @@ async function lsSetSnaps(a) {return Storage.snaps.set(a);}
 // ── DATA OPS ─────────────────────────────────────────────────────────────────
 async function load(k){
   const r=await lsGetDay(k);
-  return r||{date:k,breakfast:'',lunch:'',dinner:'',energy:null,happiness:null,portion:null,notInKeto:false,tested:false,notes:'',breakfastKeto:false,lunchKeto:false,dinnerKeto:false};
+  return r||{date:k,breakfast:'',lunch:'',dinner:'',energy:null,happiness:null,portion:null,notInKeto:false,tested:false,notes:'',breakfastKeto:false,lunchKeto:false,dinnerKeto:false,breakfastTime:null,lunchTime:null,dinnerTime:null,heart:null,heartNotes:'',supplements:{}};
 }
 async function save(k,e){return lsSetDay(k,e);}
 async function allKeys(){return lsAllDayKeys();}
@@ -758,33 +1003,73 @@ async function exportAll(){
   const data=Object.fromEntries(keys.map((k,i)=>[k,entries[i]]));
   await exportToDownloads(data,'keto-all-data-'+todayKey()+'.json');
 }
-// exportToDownloads: writes to the public Downloads folder on Android via
-// Capacitor Filesystem; falls back to a web anchor download on plain browser.
-async function exportToDownloads(obj,fname){
-  if(!CAP){dlJSON(obj,fname);return;}
+// Low-level: export any Blob to the Downloads folder (native) or trigger an
+// anchor download (web).  Returns true if the file was saved to Downloads,
+// false if the web fallback was used.  Does NOT show a success toast.
+async function exportBlobToDownloads(blob,fname){
+  if(!CAP){_dlBlob(blob,fname);return false;}
   try{
     // Check / request WRITE_EXTERNAL_STORAGE (required only on Android ≤ 9)
     const perm=await FS.checkPermissions().catch(()=>({publicStorage:'granted'}));
     if(perm.publicStorage!=='granted'){
       const req=await FS.requestPermissions().catch(()=>({publicStorage:'denied'}));
-      if(req.publicStorage!=='granted'){
-        toast('Storage permission denied — file not saved',true);
-        return;
-      }
+      if(req.publicStorage!=='granted'){toast('Storage permission denied — file not saved',true);return false;}
     }
-    await FS.writeFile({path:fname,directory:'DOWNLOADS',data:JSON.stringify(obj,null,2),encoding:'utf8'});
-    toast('Saved to Downloads ✓');
+    // Convert Blob → base64 for the Capacitor Filesystem bridge
+    const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(blob);});
+    await FS.writeFile({path:fname,directory:'DOWNLOADS',data:b64});
+    return true;
   }catch(e){
-    console.error('exportToDownloads failed:',e);
-    // Fall back to web-style download (triggers share sheet on some Android configs)
-    dlJSON(obj,fname);
+    console.error('exportBlobToDownloads failed:',e);
+    _dlBlob(blob,fname); // fallback to anchor download
+    return false;
   }
 }
-function dlJSON(obj,fname){
+// Trigger a browser anchor download for any Blob.
+function _dlBlob(blob,fname){
+  const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href='data:application/json,'+encodeURIComponent(JSON.stringify(obj,null,2));
-  a.download=fname;a.click();
+  a.href=url;a.download=fname;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+// High-level: serialize a JS object as JSON, export, and show a toast.
+async function exportToDownloads(obj,fname){
+  const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+  const saved=await exportBlobToDownloads(blob,fname);
+  if(saved)toast('Saved to Downloads ✓');
+}
+function dlJSON(obj,fname){
+  _dlBlob(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),fname);
+}
+
+// Full backup: all day entries + all photos → keto-backup-YYYY-MM-DD.zip
+async function exportFullBackup(){
+  toast('Building backup…');
+  const enc=new TextEncoder();
+  // Collect day entries
+  const keys=await allKeys();
+  const dayEntries=await Promise.all(keys.map(k=>load(k)));
+  const days=Object.fromEntries(keys.map((k,i)=>[k,dayEntries[i]]));
+  const zipEntries=[
+    {path:'backup_info.json', data:enc.encode(JSON.stringify({app:'keto-tracker',version:APP_VERSION,exported:new Date().toISOString(),dayCount:keys.length},null,2))},
+    {path:'data.json',        data:enc.encode(JSON.stringify(days,null,2))}
+  ];
+  // Collect photos
+  const photoPaths=await getAllPhotoPaths();
+  for(const {date,meal,idx} of photoPaths){
+    const blob=idx===null ? await Storage.photos.get(date,meal) : await Storage.photos.getAt(date,meal,idx);
+    if(!blob)continue;
+    const suffix=idx===null?'':'_'+idx;
+    zipEntries.push({path:`photos/${date}_${meal}${suffix}.jpg`, data:new Uint8Array(await blob.arrayBuffer())});
+  }
+  // Build ZIP and export
+  const zipBlob=await _Zip.pack(zipEntries);
+  const fname=`keto-backup-${todayKey()}.zip`;
+  const saved=await exportBlobToDownloads(zipBlob,fname);
+  const summary=`${keys.length} day${keys.length!==1?'s':''}, ${photoPaths.length} photo${photoPaths.length!==1?'s':''}`;
+  toast(saved?`Backup saved to Downloads — ${summary} ✓`:`Backup ready — ${summary} ✓`);
+}
+
 // Merge imported entry into existing entry field by field.
 // Imported value only fills a field if the existing value is empty (null, '', false).
 function mergeEntries(existing,imported){
@@ -849,6 +1134,76 @@ function handleImport(e){
   r.readAsText(file);
 }
 
+// ZIP backup restore — accepts a keto-backup-*.zip file produced by exportFullBackup().
+async function handleZipImport(e){
+  const file=e.target.files[0]; e.target.value=''; if(!file)return;
+  toast('Reading backup…');
+  try{
+    const fileMap=await _Zip.unpack(file);
+    if(!fileMap.has('data.json')){toast('Not a Keto Tracker backup file',true);return;}
+
+    // Parse and validate day entries
+    const raw=JSON.parse(new TextDecoder().decode(fileMap.get('data.json')));
+    if(typeof raw!=='object'||Array.isArray(raw))throw new Error('Invalid data.json');
+    const valid={};
+    for(const[k,v]of Object.entries(raw)){
+      const dk=k.startsWith('kt_d_')?k.slice(5):k.startsWith('kt_')?k.slice(3):k;
+      if(/^\d{4}-\d{2}-\d{2}$/.test(dk)&&typeof v==='object')valid[dk]=v;
+    }
+    if(!Object.keys(valid).length){toast('No valid day entries in backup',true);return;}
+
+    const existingSet=new Set(await allKeys());
+    const newKeys=Object.keys(valid).filter(k=>!existingSet.has(k));
+    const dupKeys=Object.keys(valid).filter(k=>existingSet.has(k));
+    const photoFiles=[...fileMap.keys()].filter(p=>p.startsWith('photos/'));
+
+    const summary=`${newKeys.length} new day${newKeys.length!==1?'s':''}` +
+      (dupKeys.length?` · ${dupKeys.length} duplicate${dupKeys.length!==1?'s':''}`:'') +
+      (photoFiles.length?` · ${photoFiles.length} photo${photoFiles.length!==1?'s':''}` :'');
+    if(!confirm(`Restore backup?\n\n${summary}\n\nThis will merge into your current data.`))return;
+
+    // Duplicate handling — same three-mode flow as handleImport
+    let dupMode='skip';
+    if(dupKeys.length){
+      const wantMerge=confirm(`${dupKeys.length} day${dupKeys.length!==1?'s':''} already exist.\n\nOK → Merge (fill empty fields only)\nCancel → choose overwrite or skip`);
+      if(wantMerge){dupMode='merge';}
+      else{
+        dupMode=confirm(`Overwrite the ${dupKeys.length} duplicate day${dupKeys.length!==1?'s':''}?\n\nOK → Overwrite\nCancel → Skip`)?'overwrite':'skip';
+      }
+    }
+
+    // Write day entries
+    await Promise.all(newKeys.map(dk=>lsSetDay(dk,valid[dk])));
+    if(dupMode==='merge'){
+      const existing=await Promise.all(dupKeys.map(dk=>load(dk)));
+      await Promise.all(dupKeys.map((dk,i)=>lsSetDay(dk,mergeEntries(existing[i],valid[dk]))));
+    }else if(dupMode==='overwrite'){
+      await Promise.all(dupKeys.map(dk=>lsSetDay(dk,valid[dk])));
+    }
+
+    // Restore photos — filename format: photos/YYYY-MM-DD_meal[_idx].jpg
+    const RE=/^photos\/(\d{4}-\d{2}-\d{2})_(breakfast|lunch|dinner)(?:_(\d+))?\.jpg$/i;
+    let photoCount=0;
+    for(const p of photoFiles){
+      const m=p.match(RE); if(!m)continue;
+      const [,date,meal,idxStr]=m;
+      const idx=idxStr!=null?parseInt(idxStr):null;
+      const blob=new Blob([fileMap.get(p)],{type:'image/jpeg'});
+      if(idx===null)await Storage.photos.save(date,meal,blob);
+      else await Storage.photos.saveAt(date,meal,idx,blob);
+      photoCount++;
+    }
+
+    vk=todayKey();ent=await load(vk);si=defStep(ent);render();
+    const written=newKeys.length+(dupMode!=='skip'?dupKeys.length:0);
+    toast(`Restored ${written} day${written!==1?'s':''}, ${photoCount} photo${photoCount!==1?'s':''} ✓`);
+    closeSettings();
+  }catch(err){
+    console.error('ZIP import failed:',err);
+    toast('Could not read backup file',true);
+  }
+}
+
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
 function openSettings(){
   document.querySelector('#setModal .fs-title').innerHTML=
@@ -891,6 +1246,15 @@ async function renderSettings(){
     </div>
 
     <div class="set-section">
+      <div class="set-label">Quick Select Foods</div>
+      <div class="qs-grid" style="margin-bottom:10px">${getQuickSelItems().map((f,i)=>`<span class="qs-chip" style="display:inline-flex;align-items:center;gap:6px">${f}<button onclick="removeQuickSelItem(${i})" style="background:none;border:none;color:var(--txt-d);cursor:pointer;font-size:1rem;padding:0;line-height:1;margin-left:2px">✕</button></span>`).join('')}</div>
+      <div class="set-row">
+        <input class="set-inp" id="qsAdd" placeholder="Add food…" maxlength="40">
+        <button class="set-btn set-btn-save" onclick="addQuickSelItem()">+ Add</button>
+      </div>
+    </div>
+
+    <div class="set-section">
       <div class="set-label">Image Quality</div>
       <div class="set-row">
         <button class="set-btn set-btn-neutral ${quality === 'high' ? 'active' : ''}" onclick="setQuality('high')">High</button>
@@ -916,6 +1280,13 @@ async function renderSettings(){
         <button class="set-btn set-btn-neutral" onclick="exportAll()">⬇ Export .json</button>
         <button class="set-btn set-btn-neutral" onclick="document.getElementById('fileIn').click()">⬆ Import .json</button>
       </div>
+      <div class="set-row" style="margin-top:8px">
+        <button class="set-btn set-btn-neutral" onclick="exportFullBackup()" style="flex:1">📦 Full Backup .zip</button>
+        <button class="set-btn set-btn-neutral" onclick="document.getElementById('zipIn').click()" style="flex:1">📦 Restore .zip</button>
+      </div>
+      <div class="tip-box" style="margin-top:8px;font-size:.75rem;padding:10px 12px;line-height:1.5">
+        <strong>Full Backup</strong> exports all days <em>and</em> every meal photo into a single <code>.zip</code> file. Use <strong>Restore .zip</strong> on any device to bring everything back. The <strong>.json</strong> export contains only text data (no photos) and is better for lightweight transfers.
+      </div>
     </div>
 
     <div class="set-section">
@@ -938,9 +1309,9 @@ async function renderSettings(){
     </div>
 
     <div class="tip-box">
-      💡 <strong>To move data to another device:</strong><br>
-      Use <strong>Export .json</strong> → save the file to cloud storage or email it to yourself → open the app on the new device → <strong>Import .json</strong>.<br><br>
-      ⚠️ <strong>Avoid clearing browser data</strong> — this will erase your entries. Use Export regularly as a backup.
+      💡 <strong>To move everything to another device:</strong><br>
+      Use <strong>Full Backup .zip</strong> → save to cloud or email → open on the new device → <strong>Restore .zip</strong>. This transfers all days <em>and</em> photos in one step.<br><br>
+      ⚠️ <strong>Avoid clearing app/browser data</strong> — this will erase your entries. Run a Full Backup regularly.
     </div>`;
 }
 async function doSaveSnap(){
@@ -950,20 +1321,19 @@ async function doSaveSnap(){
 }
 
 // ── VERSION ───────────────────────────────────────────────────────────────────
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.7';
 
 // ── TRACKER ──────────────────────────────────────────────────────────────────
-const STEPS=['breakfast','lunch','dinner','energy','happiness','portion','flags','notes','summary'];
+const STEPS=['breakfast','lunch','dinner','ratings','heart','flags','notes','summary'];
 const META={
-  breakfast:{ic:'🍳',lbl:'Meal 1 of 3',   title:'Breakfast', sub:'What did you eat this morning?',    type:'txt'},
-  lunch:    {ic:'🥗',lbl:'Meal 2 of 3',   title:'Lunch',     sub:'What did you have for lunch?',      type:'txt'},
-  dinner:   {ic:'🍽️',lbl:'Meal 3 of 3', title:'Dinner',    sub:'What did you eat for dinner?',      type:'txt'},
-  energy:   {ic:'⚡',lbl:'Daily Check-in',title:'Energy',    sub:'How were your energy levels today?',type:'rate'},
-  happiness:{ic:'😊',lbl:'Daily Check-in',title:'Happiness', sub:'How happy did you feel today?',     type:'rate'},
-  portion:  {ic:'🍽',lbl:'Daily Check-in',title:'Portions',  sub:'How were your portion sizes?',      type:'rate'},
-  flags:    {ic:'🚩',lbl:'Daily Flags',   title:'Flags',     sub:'Anything important to note?',       type:'flags'},
-  notes:    {ic:'📝',lbl:'Optional',      title:'Notes',     sub:'Anything else on your mind?',       type:'txt'},
-  summary:  {ic:'✅',lbl:'Done!',         title:'Day Summary',sub:'',                                 type:'sum'},
+  breakfast:{ic:'🍳',lbl:'Meal 1 of 3',   title:'Breakfast',    sub:'What did you eat this morning?',         type:'txt'},
+  lunch:    {ic:'🥗',lbl:'Meal 2 of 3',   title:'Lunch',        sub:'What did you have for lunch?',           type:'txt'},
+  dinner:   {ic:'🍽️',lbl:'Meal 3 of 3', title:'Dinner',       sub:'What did you eat for dinner?',           type:'txt'},
+  ratings:  {ic:'📊',lbl:'Daily Check-in',title:'Daily Ratings',sub:'Rate your energy, mood, and portions.',  type:'ratings'},
+  heart:    {ic:'💗',lbl:'Health Check',  title:'Heart Health', sub:'How did your heart feel today?',         type:'heart'},
+  flags:    {ic:'🚩',lbl:'Daily Flags',   title:'Flags',        sub:'Anything important to note?',            type:'flags'},
+  notes:    {ic:'📝',lbl:'Optional',      title:'Notes',        sub:'Anything else on your mind?',            type:'txt'},
+  summary:  {ic:'✅',lbl:'Done!',         title:'Day Summary',  sub:'',                                       type:'sum'},
 };
 const RLBL={1:'Low',2:'Poor',3:'Okay',4:'Good',5:'Great'};
 const PLBL={1:'Tiny',2:'Small',3:'Normal',4:'Large',5:'Huge'};
@@ -972,16 +1342,19 @@ const PH={breakfast:'2 eggs, bacon, avocado',lunch:'Grilled chicken salad',dinne
 const todayKey=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const fmtDate=k=>{const d=new Date(k+'T12:00:00');return['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+', '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getDate();};
 const offKey=(k,n)=>{const dt=new Date(k+'T12:00:00');dt.setDate(dt.getDate()+n);return dt.toISOString().slice(0,10);};
-const smartStep=()=>{const h=new Date().getHours();if(h<10)return'breakfast';if(h<14)return'lunch';if(h<20)return'dinner';return'energy';};
+const smartStep=()=>{const h=new Date().getHours();if(h<10)return'breakfast';if(h<14)return'lunch';if(h<20)return'dinner';return'ratings';};
 
 let vk=todayKey(),si=0,ent={};
 
 function defStep(e){
   if(vk!==todayKey())return STEPS.indexOf('summary');
-  const inc=STEPS.filter(s=>!['flags','notes','summary'].includes(s)).filter(s=>{
+  const isInc=s=>{
     if(['breakfast','lunch','dinner'].includes(s))return!e[s];
-    return e[s]===null;
-  });
+    if(s==='ratings')return e.energy===null||e.happiness===null||e.portion===null;
+    if(s==='heart')return e.heart===null;
+    return false;
+  };
+  const inc=STEPS.filter(s=>!['flags','notes','summary'].includes(s)).filter(isInc);
   if(!inc.length)return STEPS.indexOf('summary');
   const ss=smartStep();
   if(inc.includes(ss))return STEPS.indexOf(ss);
@@ -1007,13 +1380,25 @@ function renderStep(){
   if(step==='summary'){body=renderSum(isT,!isFut);}
   else{
     let inp='';
+    const isMealStep=['breakfast','lunch','dinner'].includes(step);
     if(m.type==='txt'){
-      const isMeal=['breakfast','lunch','dinner'].includes(step);
       inp=`<textarea id="ta" rows="4" placeholder="${PH[step]||''}" oninput="upd('${step}',this.value)">${ent[step]||''}</textarea>`;
-    }else if(m.type==='rate'){
-      const lbls=step==='portion'?PLBL:RLBL;
-      inp=`<div class="r-grid">${[1,2,3,4,5].map(n=>`<button class="r-btn${ent[step]===n?' sel':''}" onclick="selRate('${step}',${n})">${n}<span class="rlbl">${lbls[n]}</span></button>`).join('')}</div>`;
+      if(isMealStep)inp+=`<button class="qs-open-btn" onclick="openQuickSel('${step}')">⚡ Quick Select</button>`;
+    }else if(m.type==='ratings'){
+      inp=`<div class="ratings-block">
+        <div><div class="rate-row-lbl">⚡ Energy</div><div class="r-grid-sm">${[1,2,3,4,5].map(n=>`<button class="r-btn-sm${ent.energy===n?' sel':''}" onclick="pickRate('energy',${n})">${n}<span class="rlbl">${RLBL[n]}</span></button>`).join('')}</div></div>
+        <div><div class="rate-row-lbl">😊 Happiness</div><div class="r-grid-sm">${[1,2,3,4,5].map(n=>`<button class="r-btn-sm${ent.happiness===n?' sel':''}" onclick="pickRate('happiness',${n})">${n}<span class="rlbl">${RLBL[n]}</span></button>`).join('')}</div></div>
+        <div><div class="rate-row-lbl">🍽 Portions</div><div class="r-grid-sm">${[1,2,3,4,5].map(n=>`<button class="r-btn-sm${ent.portion===n?' sel':''}" onclick="pickRate('portion',${n})">${n}<span class="rlbl">${PLBL[n]}</span></button>`).join('')}</div></div>
+      </div>`;
+    }else if(m.type==='heart'){
+      inp=`<div class="heart-btns">
+        <button class="heart-btn${ent.heart==='good'?' sel-good':''}" onclick="selHeart('good')">😊<span>Good</span></button>
+        <button class="heart-btn${ent.heart==='mild'?' sel-mild':''}" onclick="selHeart('mild')">😐<span>Mild</span></button>
+        <button class="heart-btn${ent.heart==='bad'?' sel-bad':''}" onclick="selHeart('bad')">😟<span>Bad</span></button>
+      </div>
+      ${ent.heart&&ent.heart!=='good'?`<div class="heart-notes"><textarea rows="3" placeholder="Describe how your heart felt…" oninput="upd('heartNotes',this.value)">${ent.heartNotes||''}</textarea></div>`:''}`;
     }else if(m.type==='flags'){
+      const suppTotal=Object.values(ent.supplements||{}).reduce((a,b)=>a+b,0);
       inp=`<div class="tog-list">
         <div class="tog${ent.notInKeto?' on-red':''}" onclick="togFlag('notInKeto')">
           <div class="tog-info"><div class="tog-name">⚠️ Not in Keto</div><div class="tog-desc">Did you eat outside keto today?</div></div><div class="sw"></div>
@@ -1021,10 +1406,10 @@ function renderStep(){
         <div class="tog${ent.tested?' on-grn':''}" onclick="togFlag('tested')">
           <div class="tog-info"><div class="tog-name">🧪 Tested</div><div class="tog-desc">Did you test your ketone levels today?</div></div><div class="sw"></div>
         </div>
-      </div>`;
+      </div>
+      <button class="qs-open-btn" style="margin-top:8px" onclick="openSupps()">💊 Supplements${suppTotal>0?` · ${suppTotal} logged`:''}</button>`;
     }
     const isTxt=m.type==='txt';
-    const isMealStep=['breakfast','lunch','dinner'].includes(step);
     const acts=!isFut
       ?`<div class="actions">
           ${si>0?`<button class="btn btn-back" onclick="back()">‹</button>`:''}
@@ -1033,7 +1418,7 @@ function renderStep(){
           ${isTxt?`<button class="btn btn-skip" onclick="skip()">Skip</button>`:''}
         </div>`
       :`<div class="actions"><button class="btn btn-main" onclick="goToday()">↩ Go to Today</button></div>`;
-    body=`<div class="card"><div><div class="step-lbl">${m.lbl}</div><div class="step-title">${m.ic} ${m.title}</div><div class="step-sub">${m.sub}</div></div>${inp}${acts}${isMealStep?'<div id="photo-area"></div>':''}</div>`;
+    body=`<div class="card${isMealStep?' card-meal':''}"><div>${!isMealStep?`<div class="step-lbl">${m.lbl}</div>`:''}<div class="step-title">${m.ic} ${m.title}</div>${!isMealStep?`<div class="step-sub">${m.sub}</div>`:''}</div>${inp}${acts}${isMealStep?'<div id="photo-area"></div>':''}</div>`;
   }
   document.getElementById('main').innerHTML=`${step!=='summary'?`<div class="dots">${dots}</div>`:''}${body}`;
   if(['breakfast','lunch','dinner','notes'].includes(step)){const ta=document.getElementById('ta');if(ta)setTimeout(()=>ta.focus(),80);}
@@ -1043,20 +1428,28 @@ function renderStep(){
 
 function renderSum(isT,canEdit=isT){
   const e=ent;
+  const heartVal=e.heart?(()=>{
+    const label=e.heart.charAt(0).toUpperCase()+e.heart.slice(1);
+    const style=e.heart==='good'?'color:var(--accent)':e.heart==='mild'?'color:var(--gold)':'color:var(--red)';
+    const notes=e.heartNotes?`<br><span style="font-size:.82rem;font-weight:400;color:var(--txt-m)">${e.heartNotes}</span>`:'';
+    return`<span style="${style}">${label}</span>${notes}`;
+  })():null;
   const rows=[
-    {ic:'🍳',k:'Breakfast',v:e.breakfast||null,si:0,meal:'breakfast',ketoKey:'breakfastKeto'},
-    {ic:'🥗',k:'Lunch',    v:e.lunch||null,    si:1,meal:'lunch',    ketoKey:'lunchKeto'},
-    {ic:'🍽️',k:'Dinner',  v:e.dinner||null,   si:2,meal:'dinner',   ketoKey:'dinnerKeto'},
+    {ic:'🍳',k:'Breakfast',v:e.breakfast||null,si:0,meal:'breakfast',ketoKey:'breakfastKeto',time:e.breakfastTime},
+    {ic:'🥗',k:'Lunch',    v:e.lunch||null,    si:1,meal:'lunch',    ketoKey:'lunchKeto',    time:e.lunchTime},
+    {ic:'🍽️',k:'Dinner',  v:e.dinner||null,   si:2,meal:'dinner',   ketoKey:'dinnerKeto',   time:e.dinnerTime},
     {ic:'⚡',k:'Energy',   v:e.energy   ?`${e.energy}/5 — ${RLBL[e.energy]}`    :null,si:3},
-    {ic:'😊',k:'Happiness',v:e.happiness?`${e.happiness}/5 — ${RLBL[e.happiness]}`:null,si:4},
-    {ic:'🍽',k:'Portions', v:e.portion  ?`${e.portion}/5 — ${PLBL[e.portion]}`  :null,si:5},
-    {ic:'📝',k:'Notes',    v:e.notes||null,si:7},
+    {ic:'😊',k:'Happiness',v:e.happiness?`${e.happiness}/5 — ${RLBL[e.happiness]}`:null,si:3},
+    {ic:'🍽',k:'Portions', v:e.portion  ?`${e.portion}/5 — ${PLBL[e.portion]}`  :null,si:3},
+    {ic:'💗',k:'Heart',    v:heartVal,si:4},
+    {ic:'💊',k:'Supplements',v:(()=>{const pairs=Object.entries(e.supplements||{}).filter(([,n])=>n>0);return pairs.length?pairs.map(([k,n])=>`${k} × ${n}`).join(', '):null;})(),si:5},
+    {ic:'📝',k:'Notes',    v:e.notes||null,si:6},
   ];
   const badges=[];
   if(e.notInKeto)badges.push(`<span class="badge b-red">⚠️ Off Keto</span>`);
   if(e.tested)badges.push(`<span class="badge b-grn">🧪 Tested</span>`);
-  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}${r.meal?`<span id="ph-ic-${r.meal}"></span>`:''}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div>${r.ketoKey&&e[r.ketoKey]?`<span class="badge b-grn" style="font-size:.72rem;padding:2px 8px;margin-top:4px;display:inline-block">🥑 Keto</span>`:''}</div>${canEdit?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
-  const flagRow=badges.length?`<div class="sum-row"><div class="sum-ic">🚩</div><div class="sum-body"><div class="sum-key">Flags</div><div class="badges">${badges.join('')}</div></div>${canEdit?`<button class="sum-edit" onclick="editAt(6)">✏️</button>`:''}</div>`:'';
+  const rHtml=rows.map(r=>`<div class="sum-row"><div class="sum-ic">${r.ic}</div><div class="sum-body"><div class="sum-key">${r.k}${r.meal?`<span id="ph-ic-${r.meal}"></span>`:''}${r.time?`<span class="sum-time">@ ${r.time}</span>`:''}</div><div class="sum-val${r.v?'':' empty'}">${r.v||'Not logged'}</div>${r.ketoKey&&e[r.ketoKey]?`<span class="badge b-grn" style="font-size:.72rem;padding:2px 8px;margin-top:4px;display:inline-block">🥑 Keto</span>`:''}</div>${canEdit?`<button class="sum-edit" onclick="editAt(${r.si})">✏️</button>`:''}</div>`).join('');
+  const flagRow=badges.length?`<div class="sum-row"><div class="sum-ic">🚩</div><div class="sum-body"><div class="sum-key">Flags</div><div class="badges">${badges.join('')}</div></div>${canEdit?`<button class="sum-edit" onclick="editAt(5)">✏️</button>`:''}</div>`:'';
   return`<div class="card">
     <div><div class="step-lbl">${fmtDate(vk)}</div><div class="step-title">✅ ${isT?"Today's Log":"Day Summary"}</div></div>
     ${isT?`<div class="done-banner">🎉 Great job logging today!</div>`:''}
@@ -1065,8 +1458,254 @@ function renderSum(isT,canEdit=isT){
   </div>`;
 }
 
-async function upd(f,v){ent[f]=v;await save(vk,ent);}
+async function upd(f,v){
+  if(['breakfast','lunch','dinner'].includes(f)){
+    if(!ent[f]&&v){const n=new Date();ent[f+'Time']=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;}
+    else if(!v){ent[f+'Time']=null;}
+  }
+  ent[f]=v;await save(vk,ent);
+}
 async function selRate(f,v){ent[f]=v;await save(vk,ent);renderStep();setTimeout(()=>next(),380);}
+async function pickRate(f,v){ent[f]=v;await save(vk,ent);renderStep();}
+async function selHeart(v){ent.heart=v;if(v==='good')ent.heartNotes='';await save(vk,ent);if(v==='good')setTimeout(()=>next(),380);else renderStep();}
+
+// ── QUICK SELECT ──────────────────────────────────────────────────────────────
+const QS_DEFAULTS=['Eggs','Bacon','Chicken','Steak','Salmon','Avocado','Cheddar','HM Mayo','Sourdough','Broccoli','Cauliflower','Almonds','Coffee','Butter','Cream','Olive Oil'];
+let _qsMeal=null,_qsSelected=new Set(),_qsBase='',_qsSortAZ=false,_qsManaging=false;
+
+function getQuickSelItems(){const s=Storage.prefs.get('quicksel');return s?JSON.parse(s):[...QS_DEFAULTS];}
+function _qsEnc(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
+
+function _renderQsGrid(){
+  let items=getQuickSelItems();
+  if(_qsSortAZ)items=[...items].sort((a,b)=>a.localeCompare(b));
+  document.getElementById('qsBody').innerHTML=`<div class="qs-grid">${items.map(f=>`<button class="qs-chip${_qsSelected.has(f)?' sel':''}" data-food="${_qsEnc(f)}" onclick="toggleQsChip(this)">${f}</button>`).join('')}</div>`;
+}
+
+function openQuickSel(meal){
+  _qsMeal=meal;_qsSelected=new Set();_qsBase=ent[meal]||'';_qsManaging=false;
+  document.getElementById('qsTitle').textContent='⚡ Quick Select';
+  document.getElementById('qsSortBtn').style.display='';
+  document.getElementById('qsEditBtn').style.display='';
+  document.getElementById('qsSortBtn').classList.toggle('active',_qsSortAZ);
+  _renderQsGrid();
+  document.getElementById('qsOverlay').classList.add('open');
+}
+
+function toggleQsSort(){
+  _qsSortAZ=!_qsSortAZ;
+  document.getElementById('qsSortBtn').classList.toggle('active',_qsSortAZ);
+  _renderQsGrid();
+}
+
+function toggleQsChip(el){
+  const food=el.dataset.food;
+  if(_qsSelected.has(food)){_qsSelected.delete(food);el.classList.remove('sel');}
+  else{_qsSelected.add(food);el.classList.add('sel');}
+  const additions=[..._qsSelected].join(', ');
+  const preview=additions?(_qsBase?_qsBase+', '+additions:additions):_qsBase;
+  const ta=document.getElementById('ta');
+  if(ta)ta.value=preview;
+}
+
+async function closeQuickSel(){
+  if(!_qsManaging){
+    const additions=[..._qsSelected].join(', ');
+    const next=additions?(_qsBase?_qsBase+', '+additions:additions):_qsBase;
+    if(next!==_qsBase)await upd(_qsMeal,next);
+  }
+  _qsSelected=new Set();
+  document.getElementById('qsOverlay').classList.remove('open');
+}
+
+// ── MANAGE MODE ───────────────────────────────────────────────────────────────
+function openQsManage(){
+  _qsManaging=true;
+  document.getElementById('qsTitle').textContent='✎ Edit Foods';
+  document.getElementById('qsSortBtn').style.display='none';
+  document.getElementById('qsEditBtn').style.display='none';
+  _renderQsManage();
+}
+
+function _renderQsManage(){
+  const items=getQuickSelItems();
+  const rows=items.map((f,i)=>`<div class="qs-item" id="qsi${i}">
+    <span class="qs-handle" ontouchstart="_tdStart(event,${i},'qs')" ontouchmove="_tdMove(event)" ontouchend="_tdEnd(event)">⠿</span>
+    <span class="qs-item-name">${f}</span>
+    <button class="qs-item-del" onclick="removeQsItem(${i})">✕</button>
+  </div>`).join('');
+  document.getElementById('qsBody').innerHTML=`
+    <div class="qs-list" id="qsList">${rows}</div>
+    <div class="qs-add-row">
+      <input class="set-inp" id="qsAddInline" placeholder="Add food…" maxlength="40" style="flex:1">
+      <button class="set-btn set-btn-save" onclick="addQsItemInline()">+ Add</button>
+    </div>`;
+}
+
+function removeQsItem(idx){
+  const items=getQuickSelItems();items.splice(idx,1);
+  Storage.prefs.set('quicksel',JSON.stringify(items));_renderQsManage();
+}
+function addQsItemInline(){
+  const inp=document.getElementById('qsAddInline');
+  const val=(inp.value||'').trim();if(!val)return;
+  const items=getQuickSelItems();
+  if(!items.map(x=>x.toLowerCase()).includes(val.toLowerCase()))items.push(val);
+  Storage.prefs.set('quicksel',JSON.stringify(items));
+  inp.value='';_renderQsManage();
+}
+// kept for Settings panel compatibility
+function addQuickSelItem(){
+  const inp=document.getElementById('qsAdd');
+  const val=(inp.value||'').trim();if(!val)return;
+  const items=getQuickSelItems();
+  if(!items.map(x=>x.toLowerCase()).includes(val.toLowerCase()))items.push(val);
+  Storage.prefs.set('quicksel',JSON.stringify(items));
+  inp.value='';renderSettings();
+}
+function removeQuickSelItem(idx){
+  const items=getQuickSelItems();items.splice(idx,1);
+  Storage.prefs.set('quicksel',JSON.stringify(items));renderSettings();
+}
+
+// ── SUPPLEMENTS ───────────────────────────────────────────────────────────────
+const SUPP_DEFAULTS=['Vitamin D','Magnesium','Omega-3','Zinc','Vitamin C','Probiotics','B12','Collagen','CoQ10','Electrolytes'];
+let _suppSortAZ=false,_suppManaging=false,_suppHoldTimer=null,_suppHoldFired=false,_suppHoldEl=null;
+
+function getSuppItems(){const s=Storage.prefs.get('supplist');return s?JSON.parse(s):[...SUPP_DEFAULTS];}
+
+function _renderSuppGrid(){
+  let items=getSuppItems();
+  if(_suppSortAZ)items=[...items].sort((a,b)=>a.localeCompare(b));
+  const supps=ent.supplements||{};
+  document.getElementById('suppBody').innerHTML=`<div class="qs-grid">${items.map(f=>{
+    const n=supps[f]||0;
+    return`<button class="supp-chip${n>0?' active':''}" data-supp="${_qsEnc(f)}"
+      ontouchstart="_suppTouchStart(event,this)"
+      ontouchend="_suppTouchEnd(event)"
+      ontouchmove="_suppTouchCancel()"
+      ontouchcancel="_suppTouchCancel()"
+      onclick="tapSupp(this)">${f}${n>0?`<span class="supp-count">${n}</span>`:''}</button>`;
+  }).join('')}</div>`;
+}
+
+function openSupps(){
+  _suppManaging=false;
+  document.getElementById('suppTitle').textContent='💊 Supplements';
+  document.getElementById('suppSortBtn').style.display='';
+  document.getElementById('suppEditBtn').style.display='';
+  document.getElementById('suppSortBtn').classList.toggle('active',_suppSortAZ);
+  _renderSuppGrid();
+  document.getElementById('suppOverlay').classList.add('open');
+}
+function toggleSuppSort(){
+  _suppSortAZ=!_suppSortAZ;
+  document.getElementById('suppSortBtn').classList.toggle('active',_suppSortAZ);
+  _renderSuppGrid();
+}
+function closeSupps(){
+  document.getElementById('suppOverlay').classList.remove('open');
+  renderStep();
+}
+
+function tapSupp(el){
+  if(_suppHoldFired){_suppHoldFired=false;return;}
+  const name=el.dataset.supp;
+  if(!ent.supplements)ent.supplements={};
+  ent.supplements[name]=(ent.supplements[name]||0)+1;
+  save(vk,ent);_renderSuppGrid();
+}
+function _suppTouchStart(e,el){
+  _suppHoldEl=el;_suppHoldFired=false;
+  _suppHoldTimer=setTimeout(()=>{
+    _suppHoldFired=true;
+    const name=el.dataset.supp;
+    if(ent.supplements)delete ent.supplements[name];
+    save(vk,ent);_renderSuppGrid();
+    _suppHoldTimer=null;
+  },600);
+}
+function _suppTouchEnd(e){
+  if(_suppHoldTimer!==null){clearTimeout(_suppHoldTimer);_suppHoldTimer=null;}
+}
+function _suppTouchCancel(){
+  clearTimeout(_suppHoldTimer);_suppHoldTimer=null;_suppHoldFired=false;_suppHoldEl=null;
+}
+
+// ── SUPP MANAGE MODE ──────────────────────────────────────────────────────────
+function openSuppManage(){
+  _suppManaging=true;
+  document.getElementById('suppTitle').textContent='✎ Edit Supplements';
+  document.getElementById('suppSortBtn').style.display='none';
+  document.getElementById('suppEditBtn').style.display='none';
+  _renderSuppManage();
+}
+function _renderSuppManage(){
+  const items=getSuppItems();
+  const rows=items.map((f,i)=>`<div class="qs-item" id="ssi${i}">
+    <span class="qs-handle" ontouchstart="_tdStart(event,${i},'supp')" ontouchmove="_tdMove(event)" ontouchend="_tdEnd(event)">⠿</span>
+    <span class="qs-item-name">${f}</span>
+    <button class="qs-item-del" onclick="removeSuppItem(${i})">✕</button>
+  </div>`).join('');
+  document.getElementById('suppBody').innerHTML=`
+    <div class="qs-list" id="suppList">${rows}</div>
+    <div class="qs-add-row">
+      <input class="set-inp" id="suppAddInline" placeholder="Add supplement…" maxlength="40" style="flex:1">
+      <button class="set-btn set-btn-save" onclick="addSuppItemInline()">+ Add</button>
+    </div>`;
+}
+function removeSuppItem(idx){
+  const items=getSuppItems();items.splice(idx,1);
+  Storage.prefs.set('supplist',JSON.stringify(items));_renderSuppManage();
+}
+function addSuppItemInline(){
+  const inp=document.getElementById('suppAddInline');
+  const val=(inp.value||'').trim();if(!val)return;
+  const items=getSuppItems();
+  if(!items.map(x=>x.toLowerCase()).includes(val.toLowerCase()))items.push(val);
+  Storage.prefs.set('supplist',JSON.stringify(items));
+  inp.value='';_renderSuppManage();
+}
+
+// ── TOUCH DRAG ────────────────────────────────────────────────────────────────
+let _tdSrc=null,_tdSrcIdx=-1,_tdGhost=null,_tdEls=[],_tdCtx='qs';
+
+function _tdStart(e,idx,ctx='qs'){
+  _tdCtx=ctx;_tdSrcIdx=idx;
+  _tdSrc=e.currentTarget.closest('.qs-item');
+  _tdEls=[...document.querySelectorAll('.qs-item')];
+  _tdSrc.classList.add('qs-dragging');
+  const r=_tdSrc.getBoundingClientRect();
+  _tdGhost=_tdSrc.cloneNode(true);
+  _tdGhost.style.cssText=`position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;pointer-events:none;z-index:300;opacity:.9;border-radius:12px;transition:none;background:var(--surf2);border:1.5px solid var(--accent)`;
+  document.body.appendChild(_tdGhost);
+  e.preventDefault();
+}
+function _tdMove(e){
+  if(!_tdGhost)return;
+  e.preventDefault();
+  const y=e.touches[0].clientY;
+  _tdGhost.style.top=(y-_tdGhost.offsetHeight/2)+'px';
+  let nearest=_tdSrcIdx,minD=Infinity;
+  _tdEls.forEach((el,i)=>{const mid=el.getBoundingClientRect().top+el.offsetHeight/2;const d=Math.abs(y-mid);if(d<minD){minD=d;nearest=i;}});
+  _tdEls.forEach((el,i)=>el.classList.toggle('qs-drag-over',i===nearest&&i!==_tdSrcIdx));
+}
+function _tdEnd(e){
+  if(!_tdGhost)return;
+  document.body.removeChild(_tdGhost);_tdGhost=null;
+  const y=e.changedTouches[0].clientY;
+  let target=_tdSrcIdx,minD=Infinity;
+  _tdEls.forEach((el,i)=>{const mid=el.getBoundingClientRect().top+el.offsetHeight/2;const d=Math.abs(y-mid);if(d<minD){minD=d;target=i;}});
+  _tdEls.forEach(el=>el.classList.remove('qs-drag-over','qs-dragging'));
+  if(target!==_tdSrcIdx){
+    const isSupp=_tdCtx==='supp';
+    const items=isSupp?getSuppItems():getQuickSelItems();
+    const[m]=items.splice(_tdSrcIdx,1);items.splice(target,0,m);
+    Storage.prefs.set(isSupp?'supplist':'quicksel',JSON.stringify(items));
+    if(isSupp)_renderSuppManage();else _renderQsManage();
+  }
+  _tdSrc=null;_tdSrcIdx=-1;_tdEls=[];
+}
 async function togFlag(f){ent[f]=!ent[f];await save(vk,ent);renderStep();}
 function next(){if(si<STEPS.length-1){si++;render();}}
 function back(){if(si>0){si--;render();}}
