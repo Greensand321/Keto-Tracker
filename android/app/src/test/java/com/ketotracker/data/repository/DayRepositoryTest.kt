@@ -21,6 +21,7 @@ private class InMemoryDao : DayEntryDao {
     override suspend fun upsertAll(entities: List<DayEntryEntity>) { entities.forEach { store[it.date] = it } }
     override suspend fun get(date: String): DayEntryEntity? = store[date]
     override suspend fun getAll(): List<DayEntryEntity> = store.values.sortedByDescending { it.date }
+    override suspend fun deleteByDate(date: String) { store.remove(date) }
     override suspend fun deleteAll() { store.clear() }
 }
 
