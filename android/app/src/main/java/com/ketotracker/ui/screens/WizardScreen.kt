@@ -1,5 +1,6 @@
 package com.ketotracker.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -89,6 +90,21 @@ fun WizardScreen(vm: AppViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(vm) {
         vm.messages.collect { message -> snackbarHostState.showSnackbar(message) }
+    }
+
+    // Back press/gesture steps out of whatever is on top first — closing the
+    // photo viewer, then any overlay, then returning to today from a past
+    // day, then walking back through the wizard — only falling through to
+    // the system default (exit/minimize) once we're at today's first step
+    // with nothing else open, i.e. "home".
+    val canGoBack = viewingPhoto != null || overlay != Overlay.NONE || !vm.isToday || vm.stepIndex > 0
+    BackHandler(enabled = canGoBack) {
+        when {
+            viewingPhoto != null -> viewingPhoto = null
+            overlay != Overlay.NONE -> overlay = Overlay.NONE
+            !vm.isToday -> vm.goToday()
+            vm.stepIndex > 0 -> vm.back()
+        }
     }
 
     Box(
@@ -254,16 +270,31 @@ private const val STEP_SLIDE_DP = 28f
 @Composable
 private fun StepTransition(stepIndex: Int, dayKey: String, content: @Composable () -> Unit) {
     val target = stepIndex to dayKey
-    var previous by remember { mutableStateOf(target) }
-    var forward by remember { mutableStateOf(true) }
-    val progress = remember { Animatable(1f) }
 
+    // Plain (non-State) holders — they only need to persist the previous
+    // target/first-run flag across recompositions, and must NOT themselves
+    // trigger one (unlike mutableStateOf, which caused an extra frame here).
+    val previousTarget = remember { arrayOf(target) }
+    val isFirst = remember { booleanArrayOf(true) }
+
+    val forward = remember(target) {
+        val (prevStep, prevDay) = previousTarget[0]
+        val dir = if (dayKey != prevDay) dayKey > prevDay else stepIndex > prevStep
+        previousTarget[0] = target
+        dir
+    }
+
+    // A fresh Animatable per target starts pre-offset/transparent on the very
+    // first frame the new content is composed (except on initial app launch,
+    // which renders in place with no animation). Previously a single
+    // Animatable(1f) was reset via a post-composition snapTo(0f) inside
+    // LaunchedEffect, leaving one frame where the new step flashed fully
+    // visible before snapping away and animating back in.
+    val progress = remember(target) { Animatable(if (isFirst[0]) 1f else 0f) }
     LaunchedEffect(target) {
-        if (target != previous) {
-            val (prevStep, prevDay) = previous
-            forward = if (dayKey != prevDay) dayKey > prevDay else stepIndex > prevStep
-            previous = target
-            progress.snapTo(0f)
+        if (isFirst[0]) {
+            isFirst[0] = false
+        } else {
             progress.animateTo(
                 1f,
                 spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium),
@@ -357,6 +388,7 @@ private fun ActionRow(vm: AppViewModel) {
             .fillMaxWidth()
             .padding(top = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         if (vm.stepIndex > 0) BackButton { vm.back() }
         PrimaryButton(
