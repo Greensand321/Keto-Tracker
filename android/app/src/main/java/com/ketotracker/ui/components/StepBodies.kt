@@ -181,16 +181,23 @@ private fun androidx.compose.foundation.layout.RowScope.HeartChoice(
     }
 }
 
-// ── Flags step ────────────────────────────────────────────────────────────
+// ── Flags + Notes step (combined) ────────────────────────────────────────
 @Composable
 fun FlagsBody(
     entry: DayEntry,
+    onNotes: (String) -> Unit,
     onToggleNotInKeto: () -> Unit,
     onToggleTested: () -> Unit,
     onOpenSupplements: () -> Unit,
 ) {
     val c = KetoTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        KetoTextArea(
+            value = entry.notes,
+            placeholder = PLACEHOLDERS["notes"] ?: "",
+            minLines = 2,
+            onValueChange = onNotes,
+        )
         ToggleRow(
             title = "⚠️ Not in Keto",
             desc = "Did you eat outside keto today?",
