@@ -41,7 +41,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.Meal
-import com.ketotracker.data.PLACEHOLDERS
 import com.ketotracker.data.Step
 import com.ketotracker.data.photo.MealPhoto
 import com.ketotracker.model.AppViewModel
@@ -53,7 +52,6 @@ import com.ketotracker.ui.components.HeaderBar
 import com.ketotracker.ui.components.HeartBody
 import com.ketotracker.ui.components.KetoButton
 import com.ketotracker.ui.components.KetoCard
-import com.ketotracker.ui.components.KetoTextArea
 import com.ketotracker.ui.components.MealBody
 import com.ketotracker.ui.components.MealPhotoArea
 import com.ketotracker.ui.components.PhotoViewer
@@ -328,7 +326,10 @@ private fun StepContent(
         return
     }
 
-    KetoCard(compact = step.isMeal) {
+    // Compact spacing on meal steps (existing) and the combined Flags & Notes
+    // step — the latter packs a textarea, two toggles, and a button onto one
+    // screen, so the tighter padding/gaps keep it from requiring a scroll.
+    KetoCard(compact = step.isMeal || step == Step.FLAGS) {
         // Label + title — meal steps skip the label row (matching web app)
         StepHeading(step, showLabelAndSub = !step.isMeal)
 
@@ -351,15 +352,10 @@ private fun StepContent(
             )
             step == Step.FLAGS -> FlagsBody(
                 entry = vm.entry,
+                onNotes = { vm.setNotes(it) },
                 onToggleNotInKeto = { vm.toggleNotInKeto() },
                 onToggleTested = { vm.toggleTested() },
                 onOpenSupplements = onSupplements,
-            )
-            step == Step.NOTES -> KetoTextArea(
-                value = vm.entry.notes,
-                placeholder = PLACEHOLDERS["notes"] ?: "",
-                minLines = 4,
-                onValueChange = { vm.setNotes(it) },
             )
         }
 
@@ -396,7 +392,7 @@ private fun ActionRow(vm: AppViewModel) {
             modifier = Modifier.weight(1f),
         ) { vm.next() }
         if (step.isMeal) KetoButton(Modifier.weight(1f)) { vm.markKeto(step.meal!!) }
-        if (step.isText) SkipButton(Modifier.weight(1f)) { vm.skip() }
+        if (step.isMeal) SkipButton(Modifier.weight(1f)) { vm.skip() }
     }
 }
 

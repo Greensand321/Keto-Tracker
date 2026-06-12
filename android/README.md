@@ -28,7 +28,7 @@ android/app/src/main/java/com/ketotracker/
 ├── data/
 │   ├── DayEntry.kt              # Core @Serializable data model (one day's log)
 │   ├── DateUtils.kt             # ISO date-key helpers (todayKey, offKey, fmtDate, isToday/isFuture)
-│   ├── Steps.kt                 # Step enum (8-step wizard) + label/placeholder constants
+│   ├── Steps.kt                 # Step enum (7-step wizard) + label/placeholder constants
 │   ├── db/                      # Room
 │   │   ├── DayEntryEntity.kt    #   @Entity: (date TEXT PK, data TEXT) — JSON column
 │   │   ├── DayEntryDao.kt       #   @Dao: upsert / get / observeAll (Flow) / deleteAll
@@ -56,7 +56,7 @@ android/app/src/main/java/com/ketotracker/
         ├── WizardScreen.kt      # Top-level screen: wizard + header + overlay routing + swipe gestures
         ├── Sheets.kt            # OverviewSheet, SupplementsSheet, QuickSelectSheet (full-screen overlays)
         ├── SettingsSheet.kt     # Settings overlay (about, theme shortcut, data, storage)
-        └── Previews.kt          # 20 @Preview composables across steps/overlays/themes
+        └── Previews.kt          # 18 @Preview composables across steps/overlays/themes
 ```
 
 ### State management — `AppViewModel`
@@ -289,13 +289,13 @@ Two small features that round out Settings parity with the web app's
 
 | Feature | Status | Notes |
 |---|---|---|
-| 8-step wizard (breakfast → … → summary) | ✅ Done | `Step` enum + `StepContent` switch |
+| 7-step wizard (breakfast → … → summary) | ✅ Done | `Step` enum + `StepContent` switch |
 | Smart starting step (`smartStep`/`defStep`) | ✅ Done | Time-of-day aware, ported 1:1 |
 | Meal entry + Quick Select chips | ✅ Done | `MealBody`, `QuickSelectSheet` |
 | Keto button + per-meal timestamps | ✅ Done | `markKeto()` |
 | Ratings (energy/happiness/portion) | ✅ Done | `RatingsBody`, auto-advance after 380ms |
 | Heart health + conditional notes | ✅ Done | `HeartBody`, auto-advance on "Good" |
-| Flags (Not in Keto / Tested) + supplements | ✅ Done | `FlagsBody`, `SupplementsSheet` |
+| Flags (Not in Keto / Tested) + supplements + notes | ✅ Done | `FlagsBody` (combined Flags & Notes step) |
 | Day summary with inline edit | ✅ Done | `SummaryCard` |
 | 14 themes (8 dark + 6 light) | ✅ Done | Exact hex values from CSS |
 | Theme picker panel | ✅ Done | `ThemePanel` |
