@@ -145,7 +145,7 @@ class AppViewModel(
             viewModelScope.launch { prefs.snapshots.collect { snaps -> snapshots = snaps } }
             viewModelScope.launch {
                 prefs.quickSelectItems.collect { items ->
-                    quickSelectItems = items.ifEmpty { DEFAULT_QUICK_FOODS }
+                    quickSelectItems = items ?: DEFAULT_QUICK_FOODS
                 }
             }
             viewModelScope.launch { prefs.backupEnabled.collect { on -> backupEnabled = on } }
@@ -176,6 +176,9 @@ class AppViewModel(
             "Eggs", "Bacon", "Chicken", "Steak", "Salmon", "Avocado", "Cheddar", "HM Mayo",
             "Sourdough", "Broccoli", "Cauliflower", "Almonds", "Coffee", "Butter", "Cream", "Olive Oil",
         )
+
+        /** Matches the web app's `maxlength="40"` on the quick-select add input. */
+        private const val MAX_QUICK_SELECT_ITEM_LENGTH = 40
 
         /** Production factory — wires Room + DataStore. */
         fun factory(app: Application): ViewModelProvider.Factory = viewModelFactory {
@@ -617,23 +620,43 @@ class AppViewModel(
 
     // ── Quick-select ──────────────────────────────────────────────────────────
 
+    /**
+     * Adds [food] to the quick-select list, ignoring blank input and
+     * duplicates of an existing item regardless of case/whitespace (so
+     * "eggs" doesn't sit alongside "Eggs" as a near-identical chip).
+     * Mirrors the web app's `addQsItemInline` (index.html ~L1549).
+     */
     fun addQuickSelectItem(food: String) {
-        val trimmed = food.trim()
-        if (trimmed.isEmpty() || trimmed in quickSelectItems) return
+        val trimmed = food.trim().take(MAX_QUICK_SELECT_ITEM_LENGTH)
+        if (trimmed.isEmpty()) return
+        if (quickSelectItems.any { it.equals(trimmed, ignoreCase = true) }) return
         val updated = quickSelectItems + trimmed
         quickSelectItems = updated
-        viewModelScope.launch { runCatching { prefs?.setQuickSelectItems(updated) } }
+        persistQuickSelectItems(updated)
     }
 
     fun removeQuickSelectItem(food: String) {
         val updated = quickSelectItems - food
         quickSelectItems = updated
-        viewModelScope.launch { runCatching { prefs?.setQuickSelectItems(updated) } }
+        persistQuickSelectItems(updated)
     }
 
     fun resetQuickSelectDefaults() {
         quickSelectItems = DEFAULT_QUICK_FOODS
-        viewModelScope.launch { runCatching { prefs?.setQuickSelectItems(DEFAULT_QUICK_FOODS) } }
+        persistQuickSelectItems(DEFAULT_QUICK_FOODS)
+    }
+
+    /**
+     * Persists [items] and reports failures back to the user — a save that
+     * silently fails would otherwise leave the in-memory list (with the new
+     * item visible everywhere this session) out of sync with disk, so the
+     * edit quietly reverts the next time the app starts.
+     */
+    private fun persistQuickSelectItems(items: List<String>) {
+        viewModelScope.launch {
+            runCatching { prefs?.setQuickSelectItems(items) }
+                .onFailure { reportError("Couldn't save quick-select items", it) }
+        }
     }
 
     // ── Periodic backup ───────────────────────────────────────────────────────
