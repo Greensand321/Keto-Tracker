@@ -47,19 +47,22 @@ fun SummaryCard(
 
         SeverityBanner(e.severity())
 
+        // Chronological timeline: meals anchor at their logged time (or a
+        // canonical slot time when unlogged) and flares slot in by their own
+        // timestamp, so a flare that spikes between two meals reads in order.
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Meal.entries.forEach { meal ->
-                MealSummaryRow(
-                    meal = meal,
-                    entry = e,
-                    canEdit = canEdit,
-                    onEdit = onEdit,
-                    photos = mealPhotos(meal),
-                    onViewPhoto = onViewPhoto,
-                )
-            }
-            if (e.flares.isNotEmpty()) {
-                FlaresSummaryRow(e.flares)
+            dayTimeline(e).forEach { event ->
+                when (event) {
+                    is DayEvent.MealEvent -> MealSummaryRow(
+                        meal = event.meal,
+                        entry = e,
+                        canEdit = canEdit,
+                        onEdit = onEdit,
+                        photos = mealPhotos(event.meal),
+                        onViewPhoto = onViewPhoto,
+                    )
+                    is DayEvent.FlareEvent -> FlareRow(event.flare)
+                }
             }
         }
 
@@ -171,28 +174,49 @@ private fun SymptomLine(s: SymptomSnapshot) {
 }
 
 @Composable
-private fun FlaresSummaryRow(flares: List<Flare>) {
+private fun FlareRow(flare: Flare) {
     val c = KetoTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(c.inp)
+            .background(c.red.copy(alpha = 0.08f))
             .padding(horizontal = 14.dp, vertical = 13.dp),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         KText("⚡", size = 19)
         Column(Modifier.weight(1f)) {
-            KText("FLARE-UPS", size = 11, color = c.txtM, letterSpacing = 1.5f)
-            flares.sortedBy { it.time }.forEach { flare ->
-                Column(Modifier.padding(top = 6.dp)) {
-                    KText("@ ${flare.time}", size = 12, color = c.txtD)
-                    SymptomLine(flare.symptoms)
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                KText("FLARE-UP", size = 11, color = c.red, letterSpacing = 1.5f)
+                KText("  @ ${flare.time}", size = 11, color = c.txtD)
             }
+            SymptomLine(flare.symptoms)
         }
     }
 }
+
+// ── Day timeline ────────────────────────────────────────────────────────────
+
+private sealed interface DayEvent {
+    val sort: String
+    data class MealEvent(val meal: Meal, override val sort: String) : DayEvent
+    data class FlareEvent(val flare: Flare, override val sort: String) : DayEvent
+}
+
+// Canonical slot times used only to position unlogged (untimed) meals in the
+// timeline; a meal's real logged time always takes precedence.
+private val MEAL_SLOT_TIME = mapOf(
+    Meal.BREAKFAST to "08:00",
+    Meal.LUNCH to "12:30",
+    Meal.DINNER to "19:00",
+)
+
+private fun dayTimeline(e: DayEntry): List<DayEvent> = buildList {
+    Meal.entries.forEach { meal ->
+        add(DayEvent.MealEvent(meal, e.mealTime(meal) ?: MEAL_SLOT_TIME.getValue(meal)))
+    }
+    e.flares.forEach { add(DayEvent.FlareEvent(it, it.time)) }
+}.sortedBy { it.sort }
 
 @Composable
 private fun EditButton(onClick: () -> Unit) {

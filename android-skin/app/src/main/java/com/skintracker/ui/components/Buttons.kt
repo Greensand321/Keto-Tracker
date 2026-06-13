@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -59,6 +60,24 @@ fun SkipButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
         weight = FontWeight.Normal,
         onClick = onClick,
     )
+}
+
+/** Full-width call-to-action for logging a standalone flare-up (Workflow B). */
+@Composable
+fun FlareButton(onClick: () -> Unit) {
+    val c = KetoTheme.colors
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.red.copy(alpha = 0.10f))
+            .border(1.5.dp, c.red.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(vertical = 11.dp, horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        KText("⚡ Log a sudden flare-up", size = 14, color = c.red, weight = FontWeight.SemiBold)
+    }
 }
 
 @Composable

@@ -128,9 +128,9 @@ fun MealBody(
     SectionLabel("🩹 Your Skin Right Now")
     val s = entry.mealSymptoms(meal)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        RatingRow("🌡 Itchiness", s.itch, SYMPTOM_LABELS) { onSymptom(SymptomField.ITCH, it) }
-        RatingRow("🔴 Redness", s.redness, SYMPTOM_LABELS) { onSymptom(SymptomField.REDNESS, it) }
-        RatingRow("🟤 Bumps", s.bumps, SYMPTOM_LABELS) { onSymptom(SymptomField.BUMPS, it) }
+        SymptomRow("🌡 Itchiness", s.itch) { onSymptom(SymptomField.ITCH, it) }
+        SymptomRow("🔴 Redness", s.redness) { onSymptom(SymptomField.REDNESS, it) }
+        SymptomRow("🟤 Bumps", s.bumps) { onSymptom(SymptomField.BUMPS, it) }
         val zones = s.swelling.size
         QuickButton("🧍 Body Map — Swelling" + if (zones > 0) " · $zones area${if (zones != 1) "s" else ""}" else "", onOpenBodyMap)
         KetoTextArea(
@@ -142,9 +142,10 @@ fun MealBody(
     }
 }
 
-/** A labelled 1–5 button row, reused for each symptom. */
+/** A labelled 1–5 symptom button row, shared by the meal page and flare sheet. */
 @Composable
-private fun RatingRow(label: String, selected: Int?, labels: Map<Int, String>, onPick: (Int) -> Unit) {
+fun SymptomRow(label: String, selected: Int?, onPick: (Int) -> Unit) {
+    val labels = SYMPTOM_LABELS
     val c = KetoTheme.colors
     Column {
         KText(label.uppercase(), size = 12, color = c.txtM, weight = FontWeight.SemiBold, letterSpacing = 0.7f, modifier = Modifier.padding(bottom = 5.dp))

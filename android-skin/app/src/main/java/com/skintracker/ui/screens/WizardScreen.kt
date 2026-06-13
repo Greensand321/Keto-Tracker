@@ -47,6 +47,7 @@ import com.skintracker.model.AppViewModel
 import com.skintracker.ui.components.BackButton
 import com.skintracker.ui.components.CalendarPanel
 import com.skintracker.ui.components.Dots
+import com.skintracker.ui.components.FlareButton
 import com.skintracker.ui.components.HeaderBar
 import com.skintracker.ui.components.KetoCard
 import com.skintracker.ui.components.MealBody
@@ -59,7 +60,7 @@ import com.skintracker.ui.components.SummaryCard
 import com.skintracker.ui.components.ThemePanel
 import com.skintracker.ui.theme.KetoTheme
 
-private enum class Overlay { NONE, THEME, OVERVIEW, CALENDAR, BODY_MAP, QUICK_SELECT, SETTINGS }
+private enum class Overlay { NONE, THEME, OVERVIEW, CALENDAR, BODY_MAP, QUICK_SELECT, FLARE, SETTINGS }
 
 // Bottom-sheet style entrance/exit: slide up from below + fade in, reverse on close.
 // Using the same spec for every overlay keeps motion consistent regardless of whether
@@ -136,6 +137,11 @@ fun WizardScreen(vm: AppViewModel) {
                         .padding(horizontal = 18.dp, vertical = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(22.dp),
                 ) {
+                    // Standalone flare-up entry (Workflow B) — only on today, since a
+                    // flare is logged "in the moment" and timestamped to now.
+                    if (vm.isToday) {
+                        FlareButton { overlay = Overlay.FLARE }
+                    }
                     if (vm.step != Step.SUMMARY) {
                         Dots(currentIndex = vm.stepIndex)
                     }
@@ -216,6 +222,12 @@ fun WizardScreen(vm: AppViewModel) {
             QuickSelectSheet(
                 vm = vm,
                 meal = quickMeal ?: Meal.BREAKFAST,
+                onClose = { overlay = Overlay.NONE },
+            )
+        }
+        AnimatedVisibility(overlay == Overlay.FLARE, enter = OVERLAY_ENTER, exit = OVERLAY_EXIT) {
+            FlareSheet(
+                onLog = { vm.addFlare(it) },
                 onClose = { overlay = Overlay.NONE },
             )
         }
