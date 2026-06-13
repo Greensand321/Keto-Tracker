@@ -47,23 +47,20 @@ import com.skintracker.model.AppViewModel
 import com.skintracker.ui.components.BackButton
 import com.skintracker.ui.components.CalendarPanel
 import com.skintracker.ui.components.Dots
-import com.skintracker.ui.components.FlagsBody
+import com.skintracker.ui.components.FlareButton
 import com.skintracker.ui.components.HeaderBar
-import com.skintracker.ui.components.HeartBody
-import com.skintracker.ui.components.KetoButton
 import com.skintracker.ui.components.KetoCard
 import com.skintracker.ui.components.MealBody
 import com.skintracker.ui.components.MealPhotoArea
 import com.skintracker.ui.components.PhotoViewer
 import com.skintracker.ui.components.PrimaryButton
-import com.skintracker.ui.components.RatingsBody
 import com.skintracker.ui.components.SkipButton
 import com.skintracker.ui.components.StepHeading
 import com.skintracker.ui.components.SummaryCard
 import com.skintracker.ui.components.ThemePanel
 import com.skintracker.ui.theme.KetoTheme
 
-private enum class Overlay { NONE, THEME, OVERVIEW, CALENDAR, SUPPLEMENTS, QUICK_SELECT, SETTINGS }
+private enum class Overlay { NONE, THEME, OVERVIEW, CALENDAR, BODY_MAP, QUICK_SELECT, FLARE, SETTINGS }
 
 // Bottom-sheet style entrance/exit: slide up from below + fade in, reverse on close.
 // Using the same spec for every overlay keeps motion consistent regardless of whether
@@ -76,6 +73,7 @@ fun WizardScreen(vm: AppViewModel) {
     val c = KetoTheme.colors
     var overlay by remember { mutableStateOf(Overlay.NONE) }
     var quickMeal by remember { mutableStateOf<Meal?>(null) }
+    var bodyMapMeal by remember { mutableStateOf<Meal?>(null) }
     var viewingPhoto by remember { mutableStateOf<MealPhoto?>(null) }
 
     // Retained through the close animation so the photo viewer's exit fade
@@ -139,6 +137,11 @@ fun WizardScreen(vm: AppViewModel) {
                         .padding(horizontal = 18.dp, vertical = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(22.dp),
                 ) {
+                    // Standalone flare-up entry (Workflow B) — only on today, since a
+                    // flare is logged "in the moment" and timestamped to now.
+                    if (vm.isToday) {
+                        FlareButton { overlay = Overlay.FLARE }
+                    }
                     if (vm.step != Step.SUMMARY) {
                         Dots(currentIndex = vm.stepIndex)
                     }
@@ -154,7 +157,10 @@ fun WizardScreen(vm: AppViewModel) {
                                     quickMeal = meal
                                     overlay = Overlay.QUICK_SELECT
                                 },
-                                onSupplements = { overlay = Overlay.SUPPLEMENTS },
+                                onBodyMap = { meal ->
+                                    bodyMapMeal = meal
+                                    overlay = Overlay.BODY_MAP
+                                },
                                 onViewPhoto = { viewingPhoto = it },
                             )
                         }
@@ -209,13 +215,19 @@ fun WizardScreen(vm: AppViewModel) {
                 onClose = { overlay = Overlay.NONE },
             )
         }
-        AnimatedVisibility(overlay == Overlay.SUPPLEMENTS, enter = OVERLAY_ENTER, exit = OVERLAY_EXIT) {
-            SupplementsSheet(vm = vm, onClose = { overlay = Overlay.NONE })
+        AnimatedVisibility(overlay == Overlay.BODY_MAP, enter = OVERLAY_ENTER, exit = OVERLAY_EXIT) {
+            BodyMapSheet(meal = bodyMapMeal ?: Meal.BREAKFAST, onClose = { overlay = Overlay.NONE })
         }
         AnimatedVisibility(overlay == Overlay.QUICK_SELECT, enter = OVERLAY_ENTER, exit = OVERLAY_EXIT) {
             QuickSelectSheet(
                 vm = vm,
                 meal = quickMeal ?: Meal.BREAKFAST,
+                onClose = { overlay = Overlay.NONE },
+            )
+        }
+        AnimatedVisibility(overlay == Overlay.FLARE, enter = OVERLAY_ENTER, exit = OVERLAY_EXIT) {
+            FlareSheet(
+                onLog = { vm.addFlare(it) },
                 onClose = { overlay = Overlay.NONE },
             )
         }
@@ -308,7 +320,7 @@ private fun StepTransition(stepIndex: Int, dayKey: String, content: @Composable 
 private fun StepContent(
     vm: AppViewModel,
     onQuickSelect: (Meal) -> Unit,
-    onSupplements: () -> Unit,
+    onBodyMap: (Meal) -> Unit,
     onViewPhoto: (MealPhoto) -> Unit,
 ) {
     val step = vm.step
@@ -326,36 +338,23 @@ private fun StepContent(
         return
     }
 
-    // Compact spacing on meal steps (existing) and the combined Flags & Notes
-    // step — the latter packs a textarea, two toggles, and a button onto one
-    // screen, so the tighter padding/gaps keep it from requiring a scroll.
-    KetoCard(compact = step.isMeal || step == Step.FLAGS) {
+    // Meal steps are meshed (meal on top, skin reading below) and longer than
+    // the old keto steps, so the card stays compact and the screen scrolls.
+    KetoCard(compact = step.isMeal) {
         // Label + title — meal steps skip the label row (matching web app)
         StepHeading(step, showLabelAndSub = !step.isMeal)
 
         // Step body
-        when {
-            step.isMeal -> MealBody(
-                meal = step.meal!!,
+        if (step.isMeal) {
+            val meal = step.meal!!
+            MealBody(
+                meal = meal,
                 entry = vm.entry,
-                onText = { vm.setMealText(step.meal!!, it) },
-                onQuickSelect = { onQuickSelect(step.meal!!) },
-            )
-            step == Step.RATINGS -> RatingsBody(
-                entry = vm.entry,
-                onPick = { field, value -> vm.pickRating(field, value) },
-            )
-            step == Step.HEART -> HeartBody(
-                entry = vm.entry,
-                onSelect = { vm.selectHeart(it) },
-                onNotes = { vm.setHeartNotes(it) },
-            )
-            step == Step.FLAGS -> FlagsBody(
-                entry = vm.entry,
-                onNotes = { vm.setNotes(it) },
-                onToggleNotInKeto = { vm.toggleNotInKeto() },
-                onToggleTested = { vm.toggleTested() },
-                onOpenSupplements = onSupplements,
+                onText = { vm.setMealText(meal, it) },
+                onQuickSelect = { onQuickSelect(meal) },
+                onSymptom = { field, value -> vm.setMealSymptom(meal, field, value) },
+                onTouch = { vm.setMealTouch(meal, it) },
+                onOpenBodyMap = { onBodyMap(meal) },
             )
         }
 
@@ -391,7 +390,6 @@ private fun ActionRow(vm: AppViewModel) {
             text = if (isLastBeforeSummary) "Finish ✓" else "Next →",
             modifier = Modifier.weight(1f),
         ) { vm.next() }
-        if (step.isMeal) KetoButton(Modifier.weight(1f)) { vm.markKeto(step.meal!!) }
         if (step.isMeal) SkipButton(Modifier.weight(1f)) { vm.skip() }
     }
 }

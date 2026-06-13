@@ -7,6 +7,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.skintracker.data.DateUtils
+import com.skintracker.data.Meal
 import com.skintracker.data.db.KetoDatabase
 import com.skintracker.data.notifications.NotificationHelper
 import com.skintracker.data.repository.DayRepository
@@ -30,9 +31,9 @@ class ReminderWorker(
             val repo = DayRepository(KetoDatabase.get(applicationContext).dayEntryDao())
             val entry = repo.load(DateUtils.todayKey())
 
-            val breakfastDone = entry.breakfast.isNotEmpty() || entry.breakfastKeto
-            val lunchDone    = entry.lunch.isNotEmpty()    || entry.lunchKeto
-            val dinnerDone   = entry.dinner.isNotEmpty()   || entry.dinnerKeto
+            val breakfastDone = !entry.mealEmpty(Meal.BREAKFAST)
+            val lunchDone    = !entry.mealEmpty(Meal.LUNCH)
+            val dinnerDone   = !entry.mealEmpty(Meal.DINNER)
 
             // All three meals logged — user is already on top of it. Skip the notification
             // so we never congratulate-nag someone who is already done for the day.

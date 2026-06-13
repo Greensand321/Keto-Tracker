@@ -1,8 +1,5 @@
 package com.skintracker.ui.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,15 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,28 +62,21 @@ fun SkipButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
     )
 }
 
-/** Gold-outlined "🥑 Keto" button shown on meal steps. Bounces on tap as positive feedback. */
+/** Full-width call-to-action for logging a standalone flare-up (Workflow B). */
 @Composable
-fun KetoButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun FlareButton(onClick: () -> Unit) {
     val c = KetoTheme.colors
-    var tapCount by remember { mutableIntStateOf(0) }
-    val scale = remember { Animatable(1f) }
-    LaunchedEffect(tapCount) {
-        if (tapCount > 0) {
-            scale.animateTo(1.16f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh))
-            scale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow))
-        }
-    }
-    Box(modifier.scale(scale.value)) {
-        PillButton(
-            text = "🥑 Keto",
-            modifier = Modifier.fillMaxWidth(),
-            bg = c.gold.copy(alpha = 0.15f),
-            textColor = c.gold,
-            border = c.gold,
-            weight = FontWeight.SemiBold,
-            onClick = { tapCount++; onClick() },
-        )
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.red.copy(alpha = 0.10f))
+            .border(1.5.dp, c.red.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(vertical = 11.dp, horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        KText("⚡ Log a sudden flare-up", size = 14, color = c.red, weight = FontWeight.SemiBold)
     }
 }
 

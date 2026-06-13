@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import com.skintracker.data.CalendarDay
 import com.skintracker.data.DateUtils
 import com.skintracker.data.DayEntry
+import com.skintracker.data.DaySeverity
+import com.skintracker.data.severity
 import com.skintracker.ui.theme.KetoTheme
 import java.time.LocalDate
 
@@ -60,18 +62,16 @@ private val MONTH_NAMES = listOf(
     "July", "August", "September", "October", "November", "December",
 )
 
-private enum class CalTier { TESTED_KETO, KETO_MEALS, HAS_DATA, NONE }
+private enum class CalTier { SEVERE, MILD, CLEAR, NONE }
 
 /**
- * Bottom-anchored month-grid calendar — native counterpart of the web app's
- * `.cal-panel` (CLAUDE.md "Calendar Panel"). Tapping a day in the displayed
- * month jumps straight to it (`calSelect`); tapping an adjacent-month day
- * navigates the grid there instead of selecting it (`calNavMonth`). Future
- * months/days are dimmed and inert, same as the web version.
+ * Bottom-anchored month-grid calendar. Tapping a day in the displayed month
+ * jumps straight to it; tapping an adjacent-month day navigates the grid there
+ * instead of selecting it. Future months/days are dimmed and inert.
  *
- * Day colour uses the same 3-tier priority as the web app (highest wins):
- * blue = tested & on-keto, green = ≥2 keto meals logged, gold = any data —
- * see CLAUDE.md "Calendar Panel" for the exact rules.
+ * Day colour reflects that day's symptom severity (worst moment of the day):
+ * red = severe flare-up, gold = mild symptoms, green = logged but clear, no
+ * colour = nothing logged. See [DayEntry.severity].
  */
 @Composable
 fun CalendarPanel(
@@ -222,17 +222,17 @@ private fun CalendarCell(
 ) {
     val c = KetoTheme.colors
 
-    val tier = when {
-        entry == null -> CalTier.NONE
-        entry.tested && !entry.notInKeto -> CalTier.TESTED_KETO
-        listOf(entry.breakfastKeto, entry.lunchKeto, entry.dinnerKeto).count { it } >= 2 -> CalTier.KETO_MEALS
-        else -> CalTier.HAS_DATA
+    val tier = when (entry?.severity()) {
+        DaySeverity.SEVERE -> CalTier.SEVERE
+        DaySeverity.MILD -> CalTier.MILD
+        DaySeverity.CLEAR -> CalTier.CLEAR
+        else -> CalTier.NONE        // null entry or DaySeverity.NONE
     }
 
     val (bg, fg) = when (tier) {
-        CalTier.TESTED_KETO -> c.blue to Color.White
-        CalTier.KETO_MEALS -> c.accent to Color.White
-        CalTier.HAS_DATA -> c.gold to Color.Black
+        CalTier.SEVERE -> c.red to Color.White
+        CalTier.MILD -> c.gold to Color.Black
+        CalTier.CLEAR -> c.accent to Color.White
         CalTier.NONE -> Color.Transparent to if (isToday) c.gold else c.txtM
     }
 
