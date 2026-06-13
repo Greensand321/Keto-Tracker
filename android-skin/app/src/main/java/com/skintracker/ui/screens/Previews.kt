@@ -2,10 +2,11 @@ package com.skintracker.ui.screens
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
-import com.skintracker.data.Heart
+import com.skintracker.data.Meal
 import com.skintracker.data.Step
+import com.skintracker.data.SymptomSnapshot
 import com.skintracker.model.AppViewModel
-import com.skintracker.model.RatingField
+import com.skintracker.model.SymptomField
 import com.skintracker.ui.theme.KetoTracker
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -17,45 +18,27 @@ private fun vmAt(step: Step, themeId: String = "midnight"): AppViewModel =
         editAt(step.ordinal)
     }
 
-// ── All 7 Wizard Steps (Midnight dark theme) ──────────────────────────────────
+// ── Wizard steps (Midnight dark theme) ────────────────────────────────────────
 
-@Preview(name = "Step 1 — Breakfast", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Step 1 — Breakfast", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewBreakfast() {
     KetoTracker("midnight") { WizardScreen(vmAt(Step.BREAKFAST)) }
 }
 
-@Preview(name = "Step 2 — Lunch", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Step 2 — Lunch", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewLunch() {
     KetoTracker("midnight") { WizardScreen(vmAt(Step.LUNCH)) }
 }
 
-@Preview(name = "Step 3 — Dinner", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Step 3 — Dinner", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewDinner() {
     KetoTracker("midnight") { WizardScreen(vmAt(Step.DINNER)) }
 }
 
-@Preview(name = "Step 4 — Ratings", showBackground = true, heightDp = 780, widthDp = 390)
-@Composable
-private fun PreviewRatings() {
-    KetoTracker("midnight") { WizardScreen(vmAt(Step.RATINGS)) }
-}
-
-@Preview(name = "Step 5 — Heart Health", showBackground = true, heightDp = 780, widthDp = 390)
-@Composable
-private fun PreviewHeart() {
-    KetoTracker("midnight") { WizardScreen(vmAt(Step.HEART)) }
-}
-
-@Preview(name = "Step 6 — Flags & Notes", showBackground = true, heightDp = 780, widthDp = 390)
-@Composable
-private fun PreviewFlags() {
-    KetoTracker("midnight") { WizardScreen(vmAt(Step.FLAGS)) }
-}
-
-@Preview(name = "Step 7 — Summary (today)", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Step 4 — Summary (today)", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewSummary() {
     KetoTracker("midnight") { WizardScreen(vmAt(Step.SUMMARY)) }
@@ -63,21 +46,19 @@ private fun PreviewSummary() {
 
 // ── Summary with data filled in ───────────────────────────────────────────────
 
-@Preview(name = "Step 7 — Summary (with data)", showBackground = true, heightDp = 900, widthDp = 390)
+@Preview(name = "Summary — with data", showBackground = true, heightDp = 1000, widthDp = 390)
 @Composable
 private fun PreviewSummaryFilled() {
     val vm = AppViewModel.preview().apply {
         setTheme("midnight")
-        setMealText(com.skintracker.data.Meal.BREAKFAST, "3 eggs, bacon, avocado")
-        setMealText(com.skintracker.data.Meal.LUNCH, "Chicken Caesar salad")
-        setMealText(com.skintracker.data.Meal.DINNER, "Ribeye + buttered asparagus")
-        pickRating(RatingField.ENERGY, 4)
-        pickRating(RatingField.HAPPINESS, 5)
-        pickRating(RatingField.PORTION, 3)
-        selectHeart(Heart.GOOD)
-        toggleTested()
-        setSupplement("Magnesium", 1)
-        setSupplement("Omega-3", 2)
+        setMealText(Meal.BREAKFAST, "3 eggs, bacon, avocado")
+        setMealSymptom(Meal.BREAKFAST, SymptomField.ITCH, 1)
+        setMealText(Meal.LUNCH, "Chicken Caesar salad")
+        setMealSymptom(Meal.LUNCH, SymptomField.REDNESS, 3)
+        setMealTouch(Meal.LUNCH, "New hand soap at work")
+        setMealText(Meal.DINNER, "Ribeye + buttered asparagus")
+        setMealSymptom(Meal.DINNER, SymptomField.BUMPS, 4)
+        addFlare(SymptomSnapshot(itch = 5, redness = 4, touch = "Handled cardboard boxes"))
         editAt(Step.SUMMARY.ordinal)
     }
     KetoTracker("midnight") { WizardScreen(vm) }
@@ -124,11 +105,11 @@ private fun PreviewCalendar() {
     }
 }
 
-@Preview(name = "Overlay — Supplements", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Overlay — Body Map (filler)", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
-private fun PreviewSupplements() {
+private fun PreviewBodyMap() {
     KetoTracker("midnight") {
-        SupplementsSheet(vm = AppViewModel.preview(), onClose = {})
+        BodyMapSheet(meal = Meal.BREAKFAST, onClose = {})
     }
 }
 
@@ -138,7 +119,7 @@ private fun PreviewQuickSelect() {
     KetoTracker("midnight") {
         QuickSelectSheet(
             vm = AppViewModel.preview(),
-            meal = com.skintracker.data.Meal.BREAKFAST,
+            meal = Meal.BREAKFAST,
             onClose = {},
         )
     }
@@ -152,30 +133,28 @@ private fun PreviewSettings() {
     }
 }
 
-// ── Light themes ──────────────────────────────────────────────────────────────
+// ── Themes ────────────────────────────────────────────────────────────────────
 
-@Preview(name = "Theme — Pearl (light)", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Theme — Pearl (light)", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewPearl() {
-    KetoTracker("pearl") { WizardScreen(vmAt(Step.RATINGS, "pearl")) }
+    KetoTracker("pearl") { WizardScreen(vmAt(Step.BREAKFAST, "pearl")) }
 }
 
-@Preview(name = "Theme — Blossom (light)", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Theme — Blossom (light)", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewBlossom() {
-    KetoTracker("blossom") { WizardScreen(vmAt(Step.FLAGS, "blossom")) }
+    KetoTracker("blossom") { WizardScreen(vmAt(Step.LUNCH, "blossom")) }
 }
 
-// ── Dark themes ───────────────────────────────────────────────────────────────
-
-@Preview(name = "Theme — Forest (dark)", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Theme — Forest (dark)", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewForest() {
-    KetoTracker("forest") { WizardScreen(vmAt(Step.HEART, "forest")) }
+    KetoTracker("forest") { WizardScreen(vmAt(Step.DINNER, "forest")) }
 }
 
-@Preview(name = "Theme — Ember (dark)", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Theme — Ember (dark)", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewEmber() {
-    KetoTracker("ember") { WizardScreen(vmAt(Step.FLAGS, "ember")) }
+    KetoTracker("ember") { WizardScreen(vmAt(Step.SUMMARY, "ember")) }
 }

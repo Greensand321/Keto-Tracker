@@ -11,16 +11,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import com.skintracker.data.DateUtils
 import com.skintracker.data.DayEntry
-import com.skintracker.data.Heart
+import com.skintracker.data.Flare
 import com.skintracker.data.Meal
+import com.skintracker.data.SymptomSnapshot
 import com.skintracker.data.SnapshotMeta
 import com.skintracker.data.Step
 import com.skintracker.data.db.KetoDatabase
@@ -258,7 +257,6 @@ class AppViewModel(
      */
     fun jumpTo(key: String) {
         if (DateUtils.isFuture(key)) return
-        cancelPendingAdvance()
         viewedKey = key
         entry = loadDateEntry(key)
         stepIndex = defStep(entry)
@@ -266,10 +264,10 @@ class AppViewModel(
 
     // ── Step navigation ───────────────────────────────────────────────────────
 
-    fun next() { cancelPendingAdvance(); if (stepIndex < Step.entries.lastIndex) stepIndex++ }
-    fun back() { cancelPendingAdvance(); if (stepIndex > 0) stepIndex-- }
+    fun next() { if (stepIndex < Step.entries.lastIndex) stepIndex++ }
+    fun back() { if (stepIndex > 0) stepIndex-- }
     fun skip() = next()
-    fun editAt(index: Int) { cancelPendingAdvance(); stepIndex = index.coerceIn(0, Step.entries.lastIndex) }
+    fun editAt(index: Int) { stepIndex = index.coerceIn(0, Step.entries.lastIndex) }
 
     // ── Field updates ─────────────────────────────────────────────────────────
 
@@ -297,86 +295,49 @@ class AppViewModel(
         notify("$message — ${cause.message ?: "unknown error"}")
     }
 
-    fun setMealText(meal: Meal, value: String) = update {
-        when (meal) {
-            Meal.BREAKFAST -> it.copy(breakfast = value)
-            Meal.LUNCH -> it.copy(lunch = value)
-            Meal.DINNER -> it.copy(dinner = value)
-        }
-    }
-
-    fun setNotes(value: String) = update { it.copy(notes = value) }
-    fun setHeartNotes(value: String) = update { it.copy(heartNotes = value) }
-
-    // Cancelled/replaced on each rating tap so a quick re-pick resets the timer,
-    // and cancelled on any manual navigation so the delayed fire can't mis-step.
-    private var ratingsAdvanceJob: Job? = null
-
-    fun pickRating(field: RatingField, value: Int) {
-        ratingsAdvanceJob?.cancel()
-        ratingsAdvanceJob = null
-        update {
-            when (field) {
-                RatingField.ENERGY -> it.copy(energy = value)
-                RatingField.HAPPINESS -> it.copy(happiness = value)
-                RatingField.PORTION -> it.copy(portion = value)
-            }
-        }
-        // Auto-advance once all three ratings are filled — equivalent to the
-        // web app's individual per-step selRate() auto-advance, collapsed onto
-        // the single combined Ratings step used in the native wizard.
-        val e = entry
-        if (e.energy != null && e.happiness != null && e.portion != null) {
-            ratingsAdvanceJob = viewModelScope.launch { delay(380); next() }
-        }
-    }
-
-    // Cancelled/replaced whenever the user picks a different heart before the
-    // delayed advance fires — otherwise tapping "Good" then quickly switching
-    // to "Mild"/"Bad" still auto-advances the wizard past the now-selected
-    // (non-Good) choice, which should require an explicit "Next" tap.
-    private var heartAdvanceJob: Job? = null
-
-    fun selectHeart(h: Heart) {
-        cancelPendingAdvance()
-        update { if (h == Heart.GOOD) it.copy(heart = h, heartNotes = "") else it.copy(heart = h) }
-        if (h == Heart.GOOD) {
-            heartAdvanceJob = viewModelScope.launch { delay(380); next() }
-        }
-    }
-
-    private fun cancelPendingAdvance() {
-        ratingsAdvanceJob?.cancel(); ratingsAdvanceJob = null
-        heartAdvanceJob?.cancel();   heartAdvanceJob = null
-    }
-
-    fun toggleNotInKeto() = update { it.copy(notInKeto = !it.notInKeto) }
-    fun toggleTested() = update { it.copy(tested = !it.tested) }
+    private fun nowHm(): String = LocalTime.now().let { "%02d:%02d".format(it.hour, it.minute) }
 
     /**
-     * Marks [meal] as keto and, the *first* time it's marked on today's entry,
-     * stamps it with the current time. Editing a past day (reachable via the
-     * summary's "Edit" buttons) never stamps "now" — that would record
-     * tonight's clock time as when a historical breakfast happened — and
-     * re-confirming an already-timestamped meal keeps its original time
-     * instead of overwriting it.
+     * Applies a change to [meal]'s data and, the *first* time the meal gains any
+     * content on today's entry, stamps it with the current time (for the
+     * "X hours after a meal" timeline). Editing a past day never stamps "now" —
+     * that would record tonight's clock time as when a historical meal happened.
      */
-    fun markKeto(meal: Meal) {
-        val now = if (isToday) LocalTime.now().let { "%02d:%02d".format(it.hour, it.minute) } else null
-        update {
-            when (meal) {
-                Meal.BREAKFAST -> it.copy(breakfastKeto = true, breakfastTime = it.breakfastTime ?: now)
-                Meal.LUNCH -> it.copy(lunchKeto = true, lunchTime = it.lunchTime ?: now)
-                Meal.DINNER -> it.copy(dinnerKeto = true, dinnerTime = it.dinnerTime ?: now)
-            }
+    private fun mutateMeal(meal: Meal, transform: (DayEntry) -> DayEntry) = update { e0 ->
+        val e = transform(e0)
+        if (isToday && e.mealTime(meal) == null && !e.mealEmpty(meal)) {
+            e.withMealTime(meal, nowHm())
+        } else {
+            e
         }
-        next()
     }
 
-    fun setSupplement(name: String, count: Int) = update {
-        val m = it.supplements.toMutableMap()
-        if (count <= 0) m.remove(name) else m[name] = count
-        it.copy(supplements = m)
+    fun setMealText(meal: Meal, value: String) = mutateMeal(meal) { it.withMealText(meal, value) }
+
+    fun setMealSymptom(meal: Meal, field: SymptomField, value: Int) = mutateMeal(meal) {
+        val s = it.mealSymptoms(meal)
+        val updated = when (field) {
+            SymptomField.ITCH -> s.copy(itch = value)
+            SymptomField.REDNESS -> s.copy(redness = value)
+            SymptomField.BUMPS -> s.copy(bumps = value)
+        }
+        it.withMealSymptoms(meal, updated)
+    }
+
+    fun setMealTouch(meal: Meal, value: String) = mutateMeal(meal) {
+        it.withMealSymptoms(meal, it.mealSymptoms(meal).copy(touch = value))
+    }
+
+    /** Sets [zone]'s swelling severity (1–3) for [meal]; a severity ≤ 0 clears it. */
+    fun setMealSwelling(meal: Meal, zone: String, severity: Int) = mutateMeal(meal) {
+        val m = it.mealSymptoms(meal).swelling.toMutableMap()
+        if (severity <= 0) m.remove(zone) else m[zone] = severity.coerceIn(1, 3)
+        it.withMealSymptoms(meal, it.mealSymptoms(meal).copy(swelling = m))
+    }
+
+    /** Appends a standalone flare-up (Workflow B) to the day being viewed. */
+    fun addFlare(symptoms: SymptomSnapshot) = update {
+        it.copy(flares = it.flares + Flare(time = nowHm(), symptoms = symptoms))
     }
 
     // ── Photos ────────────────────────────────────────────────────────────────
@@ -715,33 +676,26 @@ class AppViewModel(
         return when {
             h < 10 -> Step.BREAKFAST
             h < 14 -> Step.LUNCH
-            h < 20 -> Step.DINNER
-            else -> Step.RATINGS
+            else -> Step.DINNER
         }
     }
 
     internal fun isIncomplete(s: Step, e: DayEntry): Boolean = when (s) {
-        // A keto-flagged breakfast with no text is a deliberate fast — treat as done.
-        Step.BREAKFAST -> e.breakfast.isEmpty() && !e.breakfastKeto
-        Step.LUNCH -> e.lunch.isEmpty()
-        Step.DINNER -> e.dinner.isEmpty()
-        Step.RATINGS -> e.energy == null || e.happiness == null || e.portion == null
-        Step.HEART -> e.heart == null
+        Step.BREAKFAST -> e.mealEmpty(Meal.BREAKFAST)
+        Step.LUNCH -> e.mealEmpty(Meal.LUNCH)
+        Step.DINNER -> e.mealEmpty(Meal.DINNER)
         else -> false
     }
 
     internal fun defStep(e: DayEntry): Int {
         if (!DateUtils.isToday(viewedKey)) return Step.SUMMARY.ordinal
-        val candidates = Step.entries.filter {
-            it != Step.FLAGS && it != Step.SUMMARY
-        }
-        val incomplete = candidates.filter { isIncomplete(it, e) }
+        val mealSteps = listOf(Step.BREAKFAST, Step.LUNCH, Step.DINNER)
+        val incomplete = mealSteps.filter { isIncomplete(it, e) }
         if (incomplete.isEmpty()) return Step.SUMMARY.ordinal
 
         val ss = smartStep()
         // Don't skip past an unfilled lunch just because it's dinner time — lunch
         // must be explicitly completed (or skipped by the user) before dinner.
-        // Breakfast is exempt: an empty breakfast is auto-fasted by loadDateEntry.
         val effective = if (ss == Step.DINNER && isIncomplete(Step.LUNCH, e)) Step.LUNCH else ss
 
         if (effective in incomplete) return effective.ordinal
@@ -751,29 +705,11 @@ class AppViewModel(
         return incomplete.first().ordinal
     }
 
-    /**
-     * Returns the entry for [key], applying fasted-breakfast logic for today:
-     * if it is past 10:00 and breakfast has never been touched (empty text,
-     * keto flag off), we silently mark it keto — recording a deliberate fast —
-     * and persist the change so the flag survives a restart.
-     *
-     * This mirrors the user's intent that an unrecorded breakfast past breakfast
-     * hour should be assumed to be a fasted (keto) meal, reducing required taps.
-     */
-    private fun loadDateEntry(key: String): DayEntry {
-        val base = allEntries[key] ?: DayEntry(date = key)
-        if (DateUtils.isToday(key) && LocalTime.now().hour >= 10
-            && base.breakfast.isEmpty() && !base.breakfastKeto) {
-            val fasted = base.copy(breakfastKeto = true)
-            allEntries = allEntries + (key to fasted)
-            viewModelScope.launch { runCatching { repo.save(fasted) } }
-            return fasted
-        }
-        return base
-    }
+    private fun loadDateEntry(key: String): DayEntry = allEntries[key] ?: DayEntry(date = key)
 }
 
-enum class RatingField { ENERGY, HAPPINESS, PORTION }
+/** The three per-meal skin symptom inputs. */
+enum class SymptomField { ITCH, REDNESS, BUMPS }
 
 /** Summary counts shown by the import-confirmation dialog (CLAUDE.md "Import"). */
 data class PendingImport(val newCount: Int, val dupCount: Int)

@@ -1,7 +1,8 @@
 package com.skintracker.data.repository
 
 import com.skintracker.data.DayEntry
-import com.skintracker.data.Heart
+import com.skintracker.data.Flare
+import com.skintracker.data.SymptomSnapshot
 import com.skintracker.data.db.DayEntryDao
 import com.skintracker.data.db.DayEntryEntity
 import kotlinx.coroutines.test.runTest
@@ -40,13 +41,13 @@ class DayRepositoryTest {
             date = "2026-06-01",
             breakfast = "Eggs and bacon",
             lunch = "Salad", dinner = "Steak",
-            energy = 4, happiness = 5, portion = 3,
-            notInKeto = false, tested = true,
-            notes = "felt good",
-            breakfastKeto = true, lunchKeto = false, dinnerKeto = true,
             breakfastTime = "08:05", lunchTime = null, dinnerTime = "19:30",
-            heart = Heart.GOOD, heartNotes = "",
-            supplements = mapOf("Magnesium" to 1, "Omega-3" to 2),
+            breakfastSymptoms = SymptomSnapshot(itch = 2, redness = 1, bumps = 3, touch = "new detergent"),
+            lunchSymptoms = SymptomSnapshot(swelling = mapOf("face" to 2, "hands" to 1)),
+            dinnerSymptoms = SymptomSnapshot(),
+            flares = listOf(
+                Flare(time = "14:20", symptoms = SymptomSnapshot(itch = 5, swelling = mapOf("hands" to 3))),
+            ),
         )
 
         repo.save(original)
@@ -80,21 +81,21 @@ class DayRepositoryTest {
     @Test
     fun `decoding fills in defaults for fields missing from older records - backward compatibility`() = runTest {
         val dao = InMemoryDao()
-        // Simulates a record written by an OLDER app version, before
-        // `heart`/`heartNotes`/`supplements`/the *Time fields existed.
+        // Simulates a record written by an OLDER app version, before the
+        // per-meal symptom blocks / flares / *Time fields existed.
         dao.store["2026-06-03"] = DayEntryEntity(
             date = "2026-06-03",
-            data = """{"date":"2026-06-03","breakfast":"Yogurt","energy":3}""",
+            data = """{"date":"2026-06-03","breakfast":"Yogurt","breakfastSymptoms":{"itch":3}}""",
         )
 
         val loaded = DayRepository(dao).load("2026-06-03")
 
         assertEquals("Yogurt", loaded.breakfast)
-        assertEquals(3, loaded.energy)
-        assertNull(loaded.heart)
+        assertEquals(3, loaded.breakfastSymptoms.itch)
         assertNull(loaded.breakfastTime)
-        assertTrue(loaded.supplements.isEmpty())
-        assertEquals("", loaded.heartNotes)
+        assertTrue(loaded.lunchSymptoms.isEmpty)
+        assertTrue(loaded.flares.isEmpty())
+        assertEquals("", loaded.breakfastSymptoms.touch)
     }
 
     @Test

@@ -42,8 +42,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.skintracker.data.DateUtils
+import com.skintracker.data.DaySeverity
 import com.skintracker.data.Meal
-import com.skintracker.data.SUPPLEMENT_DEFAULTS
+import com.skintracker.data.severity
 import com.skintracker.model.AppViewModel
 import com.skintracker.ui.components.KText
 import com.skintracker.ui.theme.KetoTheme
@@ -136,11 +137,12 @@ fun OverviewSheet(vm: AppViewModel, onJump: (String) -> Unit, onClose: () -> Uni
                             }
                         },
                     ) {
+                        val sev = e.severity()
                         Column(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(if (e.notInKeto) c.red.copy(alpha = 0.08f) else c.surf)
+                                .background(if (sev == DaySeverity.SEVERE) c.red.copy(alpha = 0.08f) else c.surf)
                                 .border(1.dp, c.bd, RoundedCornerShape(16.dp))
                                 .clickable { onJump(key) }
                                 .padding(16.dp),
@@ -151,10 +153,13 @@ fun OverviewSheet(vm: AppViewModel, onJump: (String) -> Unit, onClose: () -> Uni
                                 if (txt.isNotEmpty()) KText("$ic $txt", size = 13, color = c.txtM, maxLines = 1)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                e.energy?.let { Stat("⚡", "$it/5") }
-                                e.happiness?.let { Stat("😊", "$it/5") }
-                                if (e.tested) Stat("🧪", "Tested")
-                                if (e.notInKeto) Stat("⚠️", "Off")
+                                when (sev) {
+                                    DaySeverity.SEVERE -> Stat("🔴", "Severe")
+                                    DaySeverity.MILD -> Stat("🟡", "Mild")
+                                    DaySeverity.CLEAR -> Stat("🟢", "Clear")
+                                    DaySeverity.NONE -> {}
+                                }
+                                if (e.flares.isNotEmpty()) Stat("⚡", "${e.flares.size} flare${if (e.flares.size != 1) "s" else ""}")
                             }
                         }
                     }
@@ -179,58 +184,32 @@ private fun Stat(icon: String, value: String) {
     }
 }
 
-// ── Supplements: chips with tap-to-increment counts ─────────────────────────
+// ── Body map: swelling severity per body zone ───────────────────────────────
+//
+// PLACEHOLDER (filler). The real interaction — a front/back body silhouette
+// where each tap on a zone cycles swelling severity 0→1→2→3→0 (redder each
+// tap) — is intentionally deferred. The underlying data already exists
+// (SymptomSnapshot.swelling: Map<zoneId, severity>) and AppViewModel exposes
+// `setMealSwelling(meal, zone, severity)`, so this sheet can be fleshed out
+// without touching the model. See android-skin/CLAUDE.md "body map".
 @Composable
-fun SupplementsSheet(vm: AppViewModel, onClose: () -> Unit) {
+fun BodyMapSheet(meal: Meal, onClose: () -> Unit) {
     val c = KetoTheme.colors
-    FullScreenSheet("💊 Supplements", onClose) {
+    FullScreenSheet("🧍 Body Map — Swelling", onClose) {
         Column(
-            Modifier.fillMaxSize().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            KText("Tap to add one. Tap again to add more; long-press a count to clear.", size = 13, color = c.txtM)
-            FlowChips {
-                SUPPLEMENT_DEFAULTS.forEach { name ->
-                    val count = vm.entry.supplements[name] ?: 0
-                    SupplementChip(
-                        name = name,
-                        count = count,
-                        onTap = { vm.setSupplement(name, count + 1) },
-                        onClear = { vm.setSupplement(name, 0) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SupplementChip(name: String, count: Int, onTap: () -> Unit, onClear: () -> Unit) {
-    val c = KetoTheme.colors
-    val active = count > 0
-    Box {
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(if (active) c.accent.copy(alpha = 0.15f) else c.surf)
-                .border(1.5.dp, if (active) c.accent else c.bdI, RoundedCornerShape(20.dp))
-                .clickable { onTap() }
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-        ) {
-            KText(name, size = 15, color = if (active) c.accent else c.txt, weight = FontWeight.SemiBold)
-        }
-        if (active) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(20.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(c.accent)
-                    .clickable { onClear() },
-                contentAlignment = Alignment.Center,
-            ) {
-                KText("$count", size = 11, color = Color.White, weight = FontWeight.ExtraBold)
-            }
+            KText("🚧", size = 44)
+            KText("Body map coming soon", size = 18, color = c.txt, weight = FontWeight.Bold)
+            KText(
+                "A front/back body outline where you tap each area to mark swelling " +
+                    "severity will live here. For now, use the meal's notes box to jot " +
+                    "down where you're swollen.",
+                size = 14,
+                color = c.txtM,
+            )
         }
     }
 }

@@ -1,11 +1,8 @@
 package com.skintracker.ui.components
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,12 +11,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.LocalTextStyle
@@ -31,18 +24,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.skintracker.data.DayEntry
-import com.skintracker.data.Heart
 import com.skintracker.data.Meal
 import com.skintracker.data.PLACEHOLDERS
-import com.skintracker.data.PORTION_LABELS
-import com.skintracker.data.RATING_LABELS
-import com.skintracker.model.RatingField
+import com.skintracker.data.SYMPTOM_LABELS
+import com.skintracker.model.SymptomField
 import com.skintracker.ui.theme.KetoTheme
 
 /** Styled multi-line input mirroring the CSS `textarea`. */
@@ -79,7 +69,7 @@ fun KetoTextArea(
     }
 }
 
-/** "⚡ Quick Select" / "💊 Supplements" style full-width pill button. */
+/** Full-width pill button — "⚡ Quick Select" / "🧍 Body Map" style. */
 @Composable
 fun QuickButton(text: String, onClick: () -> Unit) {
     val c = KetoTheme.colors
@@ -97,28 +87,62 @@ fun QuickButton(text: String, onClick: () -> Unit) {
     }
 }
 
-// ── Meal step (breakfast/lunch/dinner) ─────────────────────────────────────
+/** Small uppercase section label separating the meal (top) from the skin reading (bottom). */
 @Composable
-fun MealBody(meal: Meal, entry: DayEntry, onText: (String) -> Unit, onQuickSelect: () -> Unit) {
+private fun SectionLabel(text: String) {
+    val c = KetoTheme.colors
+    KText(
+        text.uppercase(),
+        size = 12,
+        color = c.txtM,
+        weight = FontWeight.SemiBold,
+        letterSpacing = 0.8f,
+        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+    )
+}
+
+// ── Meshed meal step (breakfast/lunch/dinner) ───────────────────────────────
+// Top half: the meal (food text + quick-select + photos, added by the screen).
+// Bottom half: the skin reading at this moment (symptoms + swelling + touch).
+@Composable
+fun MealBody(
+    meal: Meal,
+    entry: DayEntry,
+    onText: (String) -> Unit,
+    onQuickSelect: () -> Unit,
+    onSymptom: (SymptomField, Int) -> Unit,
+    onTouch: (String) -> Unit,
+    onOpenBodyMap: () -> Unit,
+) {
+    // ── Top half — the meal ──
+    SectionLabel("🍽 The Meal")
     KetoTextArea(
         value = entry.mealText(meal),
         placeholder = PLACEHOLDERS[meal.field] ?: "",
-        minLines = 4,
+        minLines = 3,
         onValueChange = onText,
     )
     QuickButton("⚡ Quick Select", onQuickSelect)
-}
 
-// ── Ratings step (energy / happiness / portions) ────────────────────────────
-@Composable
-fun RatingsBody(entry: DayEntry, onPick: (RatingField, Int) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        RatingRow("⚡ Energy", entry.energy, RATING_LABELS) { onPick(RatingField.ENERGY, it) }
-        RatingRow("😊 Happiness", entry.happiness, RATING_LABELS) { onPick(RatingField.HAPPINESS, it) }
-        RatingRow("🍽 Portions", entry.portion, PORTION_LABELS) { onPick(RatingField.PORTION, it) }
+    // ── Bottom half — the skin reading ──
+    SectionLabel("🩹 Your Skin Right Now")
+    val s = entry.mealSymptoms(meal)
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        RatingRow("🌡 Itchiness", s.itch, SYMPTOM_LABELS) { onSymptom(SymptomField.ITCH, it) }
+        RatingRow("🔴 Redness", s.redness, SYMPTOM_LABELS) { onSymptom(SymptomField.REDNESS, it) }
+        RatingRow("🟤 Bumps", s.bumps, SYMPTOM_LABELS) { onSymptom(SymptomField.BUMPS, it) }
+        val zones = s.swelling.size
+        QuickButton("🧍 Body Map — Swelling" + if (zones > 0) " · $zones area${if (zones != 1) "s" else ""}" else "", onOpenBodyMap)
+        KetoTextArea(
+            value = s.touch,
+            placeholder = PLACEHOLDERS["touch"] ?: "",
+            minLines = 2,
+            onValueChange = onTouch,
+        )
     }
 }
 
+/** A labelled 1–5 button row, reused for each symptom. */
 @Composable
 private fun RatingRow(label: String, selected: Int?, labels: Map<Int, String>, onPick: (Int) -> Unit) {
     val c = KetoTheme.colors
@@ -164,136 +188,5 @@ private fun RatingRow(label: String, selected: Int?, labels: Map<Int, String>, o
                 }
             }
         }
-    }
-}
-
-// ── Heart step ──────────────────────────────────────────────────────────────
-@Composable
-fun HeartBody(entry: DayEntry, onSelect: (Heart) -> Unit, onNotes: (String) -> Unit) {
-    val c = KetoTheme.colors
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        HeartChoice("😊", "Good", entry.heart == Heart.GOOD, c.accent) { onSelect(Heart.GOOD) }
-        HeartChoice("😐", "Mild", entry.heart == Heart.MILD, c.gold) { onSelect(Heart.MILD) }
-        HeartChoice("😟", "Bad", entry.heart == Heart.BAD, c.red) { onSelect(Heart.BAD) }
-    }
-    if (entry.heart != null && entry.heart != Heart.GOOD) {
-        KetoTextArea(
-            value = entry.heartNotes,
-            placeholder = "Describe how your heart felt…",
-            minLines = 3,
-            onValueChange = onNotes,
-        )
-    }
-}
-
-@Composable
-private fun androidx.compose.foundation.layout.RowScope.HeartChoice(
-    emoji: String, label: String, selected: Boolean, selColor: Color, onClick: () -> Unit,
-) {
-    val c = KetoTheme.colors
-    Column(
-        modifier = Modifier
-            .weight(1f)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) selColor.copy(alpha = 0.12f) else c.inp)
-            .border(2.dp, if (selected) selColor else c.bd, RoundedCornerShape(14.dp))
-            .clickable { onClick() }
-            .padding(vertical = 18.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        KText(emoji, size = 22)
-        KText(label, size = 13, color = if (selected) selColor else c.txtM, weight = FontWeight.SemiBold)
-    }
-}
-
-// ── Flags + Notes step (combined) ────────────────────────────────────────
-@Composable
-fun FlagsBody(
-    entry: DayEntry,
-    onNotes: (String) -> Unit,
-    onToggleNotInKeto: () -> Unit,
-    onToggleTested: () -> Unit,
-    onOpenSupplements: () -> Unit,
-) {
-    val c = KetoTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        KetoTextArea(
-            value = entry.notes,
-            placeholder = PLACEHOLDERS["notes"] ?: "",
-            minLines = 2,
-            onValueChange = onNotes,
-        )
-        ToggleRow(
-            title = "⚠️ Not in Keto",
-            desc = "Did you eat outside keto today?",
-            on = entry.notInKeto,
-            onColor = c.red,
-            onClick = onToggleNotInKeto,
-        )
-        ToggleRow(
-            title = "🧪 Tested",
-            desc = "Did you test your ketone levels today?",
-            on = entry.tested,
-            onColor = c.accent,
-            onClick = onToggleTested,
-        )
-        val total = entry.supplements.values.sum()
-        QuickButton("💊 Supplements" + if (total > 0) " · $total logged" else "", onOpenSupplements)
-    }
-}
-
-@Composable
-private fun ToggleRow(title: String, desc: String, on: Boolean, onColor: Color, onClick: () -> Unit) {
-    val c = KetoTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (on) onColor.copy(alpha = 0.09f) else c.inp)
-            .border(2.dp, if (on) onColor else c.bd, RoundedCornerShape(14.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            KText(title, size = 17, weight = FontWeight.SemiBold)
-            KText(desc, size = 13, color = c.txtM, modifier = Modifier.padding(top = 2.dp))
-        }
-        Switch(on = on, onColor = onColor)
-    }
-}
-
-@Composable
-private fun Switch(on: Boolean, onColor: Color) {
-    val c = KetoTheme.colors
-    val trackColor by animateColorAsState(
-        targetValue = if (on) onColor else c.bdI,
-        animationSpec = tween(200),
-        label = "switch_track",
-    )
-    // Knob slides from left (off) to right (on) with a spring bounce.
-    // 50dp track, 3dp padding each side, 21dp knob → travel = 50 - 6 - 21 = 23dp.
-    val knobX by animateDpAsState(
-        targetValue = if (on) 23.dp else 0.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label = "switch_knob",
-    )
-    Box(
-        Modifier
-            .width(50.dp)
-            .height(27.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(trackColor)
-            .padding(3.dp),
-    ) {
-        Box(
-            Modifier
-                .offset(x = knobX)
-                .size(21.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color.White)
-        )
     }
 }

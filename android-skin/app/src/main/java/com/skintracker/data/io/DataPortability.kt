@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.skintracker.data.DayEntry
 import com.skintracker.data.DayEntrySurrogate
+import com.skintracker.data.SymptomSnapshot
 import com.skintracker.data.toSurrogate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -73,36 +74,38 @@ object DataPortability {
 
     /**
      * Field-by-field merge: an imported value only fills a field that's empty
-     * in [existing] (`""`, `null`, or `false` — every boolean here defaults to
-     * `false`). [existing] values are never overwritten — see CLAUDE.md
-     * "Import" for the exact `mergeEntries` semantics this mirrors.
+     * in [existing]. [existing] values are never overwritten. Per-meal symptom
+     * readings merge field-by-field too (so an imported reading can fill gaps
+     * in a partially-logged meal), and flares are unioned by timestamp so an
+     * import never drops or duplicates a standalone flare.
      */
     fun merge(existing: DayEntry, imported: DayEntry): DayEntry = existing.copy(
         breakfast = existing.breakfast.ifEmpty { imported.breakfast },
         lunch = existing.lunch.ifEmpty { imported.lunch },
         dinner = existing.dinner.ifEmpty { imported.dinner },
-        energy = existing.energy ?: imported.energy,
-        happiness = existing.happiness ?: imported.happiness,
-        portion = existing.portion ?: imported.portion,
-        notInKeto = existing.notInKeto || imported.notInKeto,
-        tested = existing.tested || imported.tested,
-        notes = existing.notes.ifEmpty { imported.notes },
-        breakfastKeto = existing.breakfastKeto || imported.breakfastKeto,
-        lunchKeto = existing.lunchKeto || imported.lunchKeto,
-        dinnerKeto = existing.dinnerKeto || imported.dinnerKeto,
         breakfastTime = existing.breakfastTime ?: imported.breakfastTime,
         lunchTime = existing.lunchTime ?: imported.lunchTime,
         dinnerTime = existing.dinnerTime ?: imported.dinnerTime,
-        heart = existing.heart ?: imported.heart,
-        heartNotes = existing.heartNotes.ifEmpty { imported.heartNotes },
-        // Deliberately *more correct* than the web's `mergeEntries`: the web
-        // only treats `""`/`null`/`false` as "empty" (a literal `===` check
-        // that never matches `{}`), so an empty supplements object there blocks
-        // the imported map from filling the gap. Treating `{}` as empty too —
-        // as `ifEmpty` does — is the behaviour CLAUDE.md's "field is empty"
-        // rule actually intends, so this is not a bug to be ported over.
-        supplements = existing.supplements.ifEmpty { imported.supplements },
+        breakfastSymptoms = mergeSymptoms(existing.breakfastSymptoms, imported.breakfastSymptoms),
+        lunchSymptoms = mergeSymptoms(existing.lunchSymptoms, imported.lunchSymptoms),
+        dinnerSymptoms = mergeSymptoms(existing.dinnerSymptoms, imported.dinnerSymptoms),
+        // Union flares by timestamp — existing ones win on a clash so a re-import
+        // can't overwrite an already-recorded flare, but new ones are added.
+        flares = (existing.flares + imported.flares.filter { imp ->
+            existing.flares.none { it.time == imp.time }
+        }).sortedBy { it.time },
     )
+
+    private fun mergeSymptoms(existing: SymptomSnapshot, imported: SymptomSnapshot): SymptomSnapshot =
+        existing.copy(
+            itch = existing.itch ?: imported.itch,
+            redness = existing.redness ?: imported.redness,
+            bumps = existing.bumps ?: imported.bumps,
+            // Treating `{}` as empty (like `ifEmpty`) is the behaviour the
+            // "field is empty" merge rule intends.
+            swelling = existing.swelling.ifEmpty { imported.swelling },
+            touch = existing.touch.ifEmpty { imported.touch },
+        )
 
     // ── SAF I/O — replaces the browser's anchor-download / FileReader dance ──
 
