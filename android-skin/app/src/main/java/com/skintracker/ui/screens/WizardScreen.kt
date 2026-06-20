@@ -88,6 +88,15 @@ fun WizardScreen(vm: AppViewModel) {
         vm.messages.collect { message -> snackbarHostState.showSnackbar(message) }
     }
 
+    // The home-screen flare widget asks the app (via the ViewModel) to open the
+    // flare-entry sheet on launch; honour it once, then clear the request.
+    LaunchedEffect(vm.flareEntryRequested) {
+        if (vm.flareEntryRequested) {
+            overlay = Overlay.FLARE
+            vm.consumeFlareEntryRequest()
+        }
+    }
+
     // Back press/gesture steps out of whatever is on top first — closing the
     // photo viewer, then any overlay, then returning to today from a past
     // day, then walking back through the wizard — only falling through to
