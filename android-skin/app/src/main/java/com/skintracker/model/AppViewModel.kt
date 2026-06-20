@@ -340,6 +340,21 @@ class AppViewModel(
         it.copy(flares = it.flares + Flare(time = nowHm(), symptoms = symptoms))
     }
 
+    // Set when the app is opened from the home-screen flare widget; the UI
+    // observes it to pop the flare-entry sheet, then calls
+    // [consumeFlareEntryRequest]. A plain flag (not an event) is fine — it's
+    // idempotent and cleared as soon as the sheet opens.
+    var flareEntryRequested by mutableStateOf(false)
+        private set
+
+    /** Requests the flare-entry sheet (from the widget). Flares are logged for today. */
+    fun requestFlareEntry() {
+        goToday()
+        flareEntryRequested = true
+    }
+
+    fun consumeFlareEntryRequest() { flareEntryRequested = false }
+
     // ── Photos ────────────────────────────────────────────────────────────────
     // Native counterpart to the web app's getMealPhotos/addMealPhoto/
     // removeMealPhotoAt (see CLAUDE.md "IndexedDB (photo store)"). Files live

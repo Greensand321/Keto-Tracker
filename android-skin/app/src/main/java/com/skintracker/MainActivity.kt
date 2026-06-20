@@ -1,5 +1,6 @@
 package com.skintracker
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +18,7 @@ import com.skintracker.ui.screens.WizardScreen
 import com.skintracker.ui.theme.KetoTheme
 import com.skintracker.ui.theme.KetoTracker
 import com.skintracker.ui.theme.resolveAutoTheme
+import com.skintracker.widget.FlareWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -37,6 +39,9 @@ class MainActivity : ComponentActivity() {
         // the file and PhotoStore deleting it — see CameraCapture.kt).
         lifecycleScope.launch(Dispatchers.IO) { clearStaleCaptures(applicationContext) }
 
+        // Handle a cold start launched by the home-screen flare widget.
+        handleIntent(intent)
+
         setContent {
             val themeId = if (vm.autoThemeEnabled) {
                 resolveAutoTheme(vm.darkAutoThemeId, vm.lightAutoThemeId)
@@ -53,6 +58,21 @@ class MainActivity : ComponentActivity() {
                     WizardScreen(vm)
                 }
             }
+        }
+    }
+
+    // The widget launches with SINGLE_TOP, so when the app is already running a
+    // tap arrives here rather than through onCreate.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** Opens the flare-entry sheet when launched from the home-screen widget. */
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == FlareWidgetProvider.ACTION_LOG_FLARE) {
+            vm.requestFlareEntry()
         }
     }
 }
