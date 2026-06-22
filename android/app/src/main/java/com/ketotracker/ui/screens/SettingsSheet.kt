@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import com.ketotracker.data.DateUtils
+import com.ketotracker.data.SUPPLEMENT_DEFAULTS
 import com.ketotracker.data.SnapshotMeta
 import com.ketotracker.data.io.StorageStats
 import com.ketotracker.model.AppViewModel
@@ -74,7 +75,7 @@ import java.time.format.DateTimeFormatter
 private const val APP_VERSION = "1.0-native-demo"
 
 private enum class SettingsPage {
-    MAIN, DATA_STORAGE, QUICK_SELECT, NOTIFICATIONS, APPEARANCE, ABOUT
+    MAIN, DATA_STORAGE, QUICK_SELECT, SUPPLEMENTS, NOTIFICATIONS, APPEARANCE, ABOUT
 }
 
 @Composable
@@ -150,6 +151,10 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                     vm = vm,
                     onBack = { page = SettingsPage.MAIN },
                 )
+                SettingsPage.SUPPLEMENTS -> SettingsSupplementsPage(
+                    vm = vm,
+                    onBack = { page = SettingsPage.MAIN },
+                )
                 SettingsPage.NOTIFICATIONS -> SettingsNotificationsPage(
                     vm = vm,
                     onBack = { page = SettingsPage.MAIN },
@@ -203,6 +208,11 @@ private fun SettingsMainPage(
                 label = "Quick-Select Foods",
                 sub = "${vm.quickSelectItems.size} item(s)",
             ) { onNavigate(SettingsPage.QUICK_SELECT) }
+            NavRow(
+                icon = "💊",
+                label = "Supplements",
+                sub = "${vm.supplementItems.size} item(s)",
+            ) { onNavigate(SettingsPage.SUPPLEMENTS) }
             NavRow(
                 icon = "🔔",
                 label = "Notifications",
@@ -527,6 +537,86 @@ private fun SettingsQuickSelectPage(vm: AppViewModel, onBack: () -> Unit) {
                 "↩ Restore Defaults",
                 subtitle = "Reset to the original ${AppViewModel.DEFAULT_QUICK_FOODS.size} items",
             ) { vm.resetQuickSelectDefaults() }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+// ── Supplements page ──────────────────────────────────────────────────────────
+
+@Composable
+private fun SettingsSupplementsPage(vm: AppViewModel, onBack: () -> Unit) {
+    val c = KetoTheme.colors
+    var newItemInput by remember { mutableStateOf("") }
+
+    Column(Modifier.fillMaxSize()) {
+        SettingsSubHeader("💊 Supplements", onBack)
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            KText(
+                "These chips appear in the Supplements panel when logging a day. Tap × to remove.",
+                size = 13, color = c.txtM,
+            )
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                vm.supplementItems.forEach { name ->
+                    RemovableChip(name) { vm.removeSupplementItem(name) }
+                }
+            }
+            SettingsSection("Add Item") {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(c.inp)
+                            .border(1.dp, c.bd, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                    ) {
+                        if (newItemInput.isEmpty()) {
+                            KText("New supplement…", size = 15, color = c.txtD)
+                        }
+                        BasicTextField(
+                            value = newItemInput,
+                            onValueChange = { newItemInput = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = c.txt, fontSize = 15.sp),
+                            cursorBrush = SolidColor(c.accent),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(c.accent)
+                            .clickable {
+                                if (newItemInput.isNotBlank()) {
+                                    vm.addSupplementItem(newItemInput)
+                                    newItemInput = ""
+                                }
+                            }
+                            .padding(horizontal = 18.dp, vertical = 12.dp),
+                    ) {
+                        KText("Add", size = 15, color = Color.White, weight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            SettingsButton(
+                "↩ Restore Defaults",
+                subtitle = "Reset to the original ${SUPPLEMENT_DEFAULTS.size} supplements",
+            ) { vm.resetSupplementDefaults() }
             Spacer(Modifier.height(24.dp))
         }
     }

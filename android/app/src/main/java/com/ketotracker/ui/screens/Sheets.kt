@@ -43,7 +43,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.Meal
-import com.ketotracker.data.SUPPLEMENT_DEFAULTS
 import com.ketotracker.model.AppViewModel
 import com.ketotracker.ui.components.KText
 import com.ketotracker.ui.theme.KetoTheme
@@ -190,7 +189,7 @@ fun SupplementsSheet(vm: AppViewModel, onClose: () -> Unit) {
         ) {
             KText("Tap to add one. Tap again to add more; long-press a count to clear.", size = 13, color = c.txtM)
             FlowChips {
-                SUPPLEMENT_DEFAULTS.forEach { name ->
+                vm.supplementItems.forEach { name ->
                     val count = vm.entry.supplements[name] ?: 0
                     SupplementChip(
                         name = name,

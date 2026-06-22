@@ -145,18 +145,40 @@ class PrefsStore(context: Context) {
         ds.edit { prefs -> prefs[NOTIF_HOUR_KEY] = hour }
     }
 
+    // ── Supplement items ──────────────────────────────────────────────────────
+
+    /**
+     * Persisted supplement chip list, or `null` if the user has never customized
+     * it. Mirrors the null-vs-empty semantics of [quickSelectItems].
+     */
+    val supplementItems: Flow<List<String>?> = ds.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
+            val s = prefs[SUPPLEMENT_ITEMS_KEY] ?: return@map null
+            runCatching {
+                prefsJson.decodeFromString(ListSerializer(String.serializer()), s)
+            }.getOrNull()
+        }
+
+    suspend fun setSupplementItems(items: List<String>) {
+        ds.edit { prefs ->
+            prefs[SUPPLEMENT_ITEMS_KEY] = prefsJson.encodeToString(ListSerializer(String.serializer()), items)
+        }
+    }
+
     // ── Keys ─────────────────────────────────────────────────────────────────
 
     companion object {
-        private val THEME_KEY          = stringPreferencesKey("theme")
-        private val AUTO_ENABLED_KEY   = booleanPreferencesKey("theme_auto")
-        private val DARK_AUTO_KEY      = stringPreferencesKey("theme_dark_auto")
-        private val LIGHT_AUTO_KEY     = stringPreferencesKey("theme_light_auto")
-        private val SNAPSHOTS_KEY      = stringPreferencesKey("snapshots")
-        private val QUICK_SELECT_KEY   = stringPreferencesKey("quick_select")
-        private val BACKUP_ENABLED_KEY = booleanPreferencesKey("backup_enabled")
-        private val BACKUP_FREQ_KEY    = stringPreferencesKey("backup_frequency")
-        private val NOTIF_ENABLED_KEY  = booleanPreferencesKey("notif_enabled")
-        private val NOTIF_HOUR_KEY     = intPreferencesKey("notif_hour")
+        private val THEME_KEY             = stringPreferencesKey("theme")
+        private val AUTO_ENABLED_KEY      = booleanPreferencesKey("theme_auto")
+        private val DARK_AUTO_KEY         = stringPreferencesKey("theme_dark_auto")
+        private val LIGHT_AUTO_KEY        = stringPreferencesKey("theme_light_auto")
+        private val SNAPSHOTS_KEY         = stringPreferencesKey("snapshots")
+        private val QUICK_SELECT_KEY      = stringPreferencesKey("quick_select")
+        private val SUPPLEMENT_ITEMS_KEY  = stringPreferencesKey("supplement_items")
+        private val BACKUP_ENABLED_KEY    = booleanPreferencesKey("backup_enabled")
+        private val BACKUP_FREQ_KEY       = stringPreferencesKey("backup_frequency")
+        private val NOTIF_ENABLED_KEY     = booleanPreferencesKey("notif_enabled")
+        private val NOTIF_HOUR_KEY        = intPreferencesKey("notif_hour")
     }
 }
