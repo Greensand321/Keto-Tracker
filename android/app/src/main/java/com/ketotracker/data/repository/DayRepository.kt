@@ -1,11 +1,14 @@
 package com.ketotracker.data.repository
 
+import android.util.Log
 import com.ketotracker.data.DayEntry
 import com.ketotracker.data.DayEntrySurrogate
 import com.ketotracker.data.toSurrogate
 import com.ketotracker.data.db.DayEntryDao
 import com.ketotracker.data.db.DayEntryEntity
 import kotlinx.serialization.json.Json
+
+private const val TAG = "DayRepository"
 
 class DayRepository(private val dao: DayEntryDao) : IDayRepository {
 
@@ -32,6 +35,14 @@ class DayRepository(private val dao: DayEntryDao) : IDayRepository {
     override suspend fun delete(key: String) = dao.deleteByDate(key)
     override suspend fun deleteAll() = dao.deleteAll()
 
+    // A decode failure here means a row exists in SQLite but its JSON no longer
+    // matches DayEntrySurrogate (e.g. an incompatible field type after a schema
+    // change). Falling back to a blank DayEntry is intentional — a single bad
+    // row shouldn't crash the whole app — but it's logged loudly because the
+    // caller can no longer tell "no data" from "undecodable data", and saving
+    // that blank entry back would silently overwrite the original row for good.
     private fun decode(entity: DayEntryEntity): DayEntry? =
-        runCatching { json.decodeFromString(DayEntrySurrogate.serializer(), entity.data).toDomain() }.getOrNull()
+        runCatching { json.decodeFromString(DayEntrySurrogate.serializer(), entity.data).toDomain() }
+            .onFailure { e -> Log.e(TAG, "Failed to decode entry for ${entity.date}: ${entity.data}", e) }
+            .getOrNull()
 }

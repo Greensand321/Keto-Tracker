@@ -733,7 +733,7 @@ class AppViewModel(
     internal fun defStep(e: DayEntry): Int {
         if (!DateUtils.isToday(viewedKey)) return Step.SUMMARY.ordinal
         val candidates = Step.entries.filter {
-            it != Step.FLAGS && it != Step.NOTES && it != Step.SUMMARY
+            it != Step.FLAGS && it != Step.SUMMARY
         }
         val incomplete = candidates.filter { isIncomplete(it, e) }
         if (incomplete.isEmpty()) return Step.SUMMARY.ordinal
