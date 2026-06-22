@@ -32,6 +32,7 @@ class DayRepository(private val dao: DayEntryDao) : IDayRepository {
         dao.upsertAll(entries.map { DayEntryEntity(date = it.date, data = json.encodeToString(DayEntrySurrogate.serializer(), it.toSurrogate())) })
     }
 
+    override suspend fun delete(key: String) = dao.deleteByDate(key)
     override suspend fun deleteAll() = dao.deleteAll()
 
     // A decode failure here means a row exists in SQLite but its JSON no longer
