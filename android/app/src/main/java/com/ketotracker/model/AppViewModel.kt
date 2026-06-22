@@ -144,9 +144,7 @@ class AppViewModel(
             viewModelScope.launch { prefs.lightAutoTheme.collect { id -> lightAutoThemeId = id } }
             viewModelScope.launch { prefs.snapshots.collect { snaps -> snapshots = snaps } }
             viewModelScope.launch {
-                prefs.quickSelectItems.collect { items ->
-                    quickSelectItems = items ?: DEFAULT_QUICK_FOODS
-                }
+                quickSelectItems = prefs.quickSelectItems.first() ?: DEFAULT_QUICK_FOODS
             }
             viewModelScope.launch { prefs.backupEnabled.collect { on -> backupEnabled = on } }
             viewModelScope.launch { prefs.backupFrequency.collect { freq -> backupFrequency = freq } }
