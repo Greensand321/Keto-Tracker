@@ -1,11 +1,16 @@
 package com.ketotracker.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -36,7 +41,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.Meal
-import com.ketotracker.data.PLACEHOLDERS
 import com.ketotracker.data.Step
 import com.ketotracker.data.photo.MealPhoto
 import com.ketotracker.model.AppViewModel
@@ -48,7 +52,6 @@ import com.ketotracker.ui.components.HeaderBar
 import com.ketotracker.ui.components.HeartBody
 import com.ketotracker.ui.components.KetoButton
 import com.ketotracker.ui.components.KetoCard
-import com.ketotracker.ui.components.KetoTextArea
 import com.ketotracker.ui.components.MealBody
 import com.ketotracker.ui.components.MealPhotoArea
 import com.ketotracker.ui.components.PhotoViewer
@@ -62,11 +65,11 @@ import com.ketotracker.ui.theme.KetoTheme
 
 private enum class Overlay { NONE, THEME, OVERVIEW, CALENDAR, SUPPLEMENTS, QUICK_SELECT, SETTINGS }
 
-// A quick fade in/out keeps every overlay — bottom-anchored panels and
-// full-screen sheets alike — feeling consistent without needing to know
-// each one's internal layout (scrim, card alignment, etc.).
-private val OVERLAY_ENTER = fadeIn(tween(180))
-private val OVERLAY_EXIT = fadeOut(tween(140))
+// Bottom-sheet style entrance/exit: slide up from below + fade in, reverse on close.
+// Using the same spec for every overlay keeps motion consistent regardless of whether
+// the overlay is a full-screen sheet, a panel anchored to the bottom, or a photo viewer.
+private val OVERLAY_ENTER = slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(260))
+private val OVERLAY_EXIT  = slideOutVertically(tween(260, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(200))
 
 @Composable
 fun WizardScreen(vm: AppViewModel) {
@@ -85,6 +88,21 @@ fun WizardScreen(vm: AppViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(vm) {
         vm.messages.collect { message -> snackbarHostState.showSnackbar(message) }
+    }
+
+    // Back press/gesture steps out of whatever is on top first — closing the
+    // photo viewer, then any overlay, then returning to today from a past
+    // day, then walking back through the wizard — only falling through to
+    // the system default (exit/minimize) once we're at today's first step
+    // with nothing else open, i.e. "home".
+    val canGoBack = viewingPhoto != null || overlay != Overlay.NONE || !vm.isToday || vm.stepIndex > 0
+    BackHandler(enabled = canGoBack) {
+        when {
+            viewingPhoto != null -> viewingPhoto = null
+            overlay != Overlay.NONE -> overlay = Overlay.NONE
+            !vm.isToday -> vm.goToday()
+            vm.stepIndex > 0 -> vm.back()
+        }
     }
 
     Box(
@@ -233,7 +251,6 @@ fun WizardScreen(vm: AppViewModel) {
 // ── Step content ─────────────────────────────────────────────────────────────
 
 private const val STEP_SLIDE_DP = 28f
-private const val STEP_TRANSITION_MS = 260
 
 /**
  * Slides + fades the active step (or summary day) in from the direction of
@@ -251,17 +268,35 @@ private const val STEP_TRANSITION_MS = 260
 @Composable
 private fun StepTransition(stepIndex: Int, dayKey: String, content: @Composable () -> Unit) {
     val target = stepIndex to dayKey
-    var previous by remember { mutableStateOf(target) }
-    var forward by remember { mutableStateOf(true) }
-    val progress = remember { Animatable(1f) }
 
+    // Plain (non-State) holders — they only need to persist the previous
+    // target/first-run flag across recompositions, and must NOT themselves
+    // trigger one (unlike mutableStateOf, which caused an extra frame here).
+    val previousTarget = remember { arrayOf(target) }
+    val isFirst = remember { booleanArrayOf(true) }
+
+    val forward = remember(target) {
+        val (prevStep, prevDay) = previousTarget[0]
+        val dir = if (dayKey != prevDay) dayKey > prevDay else stepIndex > prevStep
+        previousTarget[0] = target
+        dir
+    }
+
+    // A fresh Animatable per target starts pre-offset/transparent on the very
+    // first frame the new content is composed (except on initial app launch,
+    // which renders in place with no animation). Previously a single
+    // Animatable(1f) was reset via a post-composition snapTo(0f) inside
+    // LaunchedEffect, leaving one frame where the new step flashed fully
+    // visible before snapping away and animating back in.
+    val progress = remember(target) { Animatable(if (isFirst[0]) 1f else 0f) }
     LaunchedEffect(target) {
-        if (target != previous) {
-            val (prevStep, prevDay) = previous
-            forward = if (dayKey != prevDay) dayKey > prevDay else stepIndex > prevStep
-            previous = target
-            progress.snapTo(0f)
-            progress.animateTo(1f, tween(STEP_TRANSITION_MS, easing = FastOutSlowInEasing))
+        if (isFirst[0]) {
+            isFirst[0] = false
+        } else {
+            progress.animateTo(
+                1f,
+                spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium),
+            )
         }
     }
 
@@ -291,7 +326,10 @@ private fun StepContent(
         return
     }
 
-    KetoCard(compact = step.isMeal) {
+    // Compact spacing on meal steps (existing) and the combined Flags & Notes
+    // step — the latter packs a textarea, two toggles, and a button onto one
+    // screen, so the tighter padding/gaps keep it from requiring a scroll.
+    KetoCard(compact = step.isMeal || step == Step.FLAGS) {
         // Label + title — meal steps skip the label row (matching web app)
         StepHeading(step, showLabelAndSub = !step.isMeal)
 
@@ -314,15 +352,10 @@ private fun StepContent(
             )
             step == Step.FLAGS -> FlagsBody(
                 entry = vm.entry,
+                onNotes = { vm.setNotes(it) },
                 onToggleNotInKeto = { vm.toggleNotInKeto() },
                 onToggleTested = { vm.toggleTested() },
                 onOpenSupplements = onSupplements,
-            )
-            step == Step.NOTES -> KetoTextArea(
-                value = vm.entry.notes,
-                placeholder = PLACEHOLDERS["notes"] ?: "",
-                minLines = 4,
-                onValueChange = { vm.setNotes(it) },
             )
         }
 
@@ -351,6 +384,7 @@ private fun ActionRow(vm: AppViewModel) {
             .fillMaxWidth()
             .padding(top = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         if (vm.stepIndex > 0) BackButton { vm.back() }
         PrimaryButton(
@@ -358,7 +392,7 @@ private fun ActionRow(vm: AppViewModel) {
             modifier = Modifier.weight(1f),
         ) { vm.next() }
         if (step.isMeal) KetoButton(Modifier.weight(1f)) { vm.markKeto(step.meal!!) }
-        if (step.isText) SkipButton(Modifier.weight(1f)) { vm.skip() }
+        if (step.isMeal) SkipButton(Modifier.weight(1f)) { vm.skip() }
     }
 }
 

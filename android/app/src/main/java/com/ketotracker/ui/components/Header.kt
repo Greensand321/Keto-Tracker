@@ -1,5 +1,12 @@
 package com.ketotracker.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,7 +56,18 @@ fun HeaderBar(
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             IconButton("‹", onClick = onPrev)
-            DateChip(dateText, onDateClick)
+            // Date text slides out upward / in from below when the day changes,
+            // giving a clear sense of calendar direction.
+            AnimatedContent(
+                targetState = dateText,
+                transitionSpec = {
+                    (fadeIn(tween(130)) + slideInVertically(tween(130)) { it / 3 }) togetherWith
+                    (fadeOut(tween(100)) + slideOutVertically(tween(100)) { -it / 3 })
+                },
+                label = "date_chip",
+            ) { text ->
+                DateChip(text, onDateClick)
+            }
             IconButton("›", enabled = nextEnabled, onClick = onNext)
             IconButton("📋", onClick = onOverview)
             IconButton("🎨", onClick = onTheme)

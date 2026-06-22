@@ -85,14 +85,20 @@ class PrefsStore(context: Context) {
 
     // ── Quick-select ─────────────────────────────────────────────────────────
 
-    /** Persisted food chip list for QuickSelectSheet — empty means "use defaults". */
-    val quickSelectItems: Flow<List<String>> = ds.data
+    /**
+     * Persisted food chip list for QuickSelectSheet, or `null` if the user has
+     * never customized it. `null` is distinct from an empty list: `null` means
+     * "fall back to defaults", while `[]` means the user deliberately removed
+     * every item and that choice should stick (see AppViewModel.quickSelectItems).
+     * Corrupt/unparsable data is treated the same as "never customized".
+     */
+    val quickSelectItems: Flow<List<String>?> = ds.data
         .catch { emit(emptyPreferences()) }
         .map { prefs ->
-            val s = prefs[QUICK_SELECT_KEY] ?: return@map emptyList()
+            val s = prefs[QUICK_SELECT_KEY] ?: return@map null
             runCatching {
                 prefsJson.decodeFromString(ListSerializer(String.serializer()), s)
-            }.getOrElse { emptyList() }
+            }.getOrNull()
         }
 
     suspend fun setQuickSelectItems(items: List<String>) {

@@ -7,8 +7,19 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,15 +32,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -97,9 +111,21 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
-        Crossfade(
+        // Directional slide: navigating into a sub-page slides in from the right
+        // (like tapping a nav row in Android Settings); the back button slides
+        // in from the left. Using targetState != MAIN is a reliable proxy for
+        // direction since the only possible transitions are MAIN→sub and sub→MAIN.
+        AnimatedContent(
             targetState = page,
-            animationSpec = tween(200),
+            transitionSpec = {
+                if (targetState != SettingsPage.MAIN) {
+                    (slideInHorizontally(tween(300)) { it } + fadeIn(tween(260))) togetherWith
+                    (slideOutHorizontally(tween(260)) { -it / 3 } + fadeOut(tween(220)))
+                } else {
+                    (slideInHorizontally(tween(300)) { -it } + fadeIn(tween(260))) togetherWith
+                    (slideOutHorizontally(tween(260)) { it / 3 } + fadeOut(tween(220)))
+                }
+            },
             label = "settings_nav",
         ) { currentPage ->
             when (currentPage) {
@@ -715,17 +741,35 @@ private fun TimePreset(icon: String, label: String, sub: String, selected: Boole
     }
 }
 
-/** Pill-shaped on/off indicator — purely decorative, the whole row is tappable. */
+/** Sliding toggle pill — knob springs to position, track fades between colours. */
 @Composable
 private fun TogglePill(on: Boolean) {
     val c = KetoTheme.colors
+    val trackColor by animateColorAsState(
+        targetValue = if (on) c.accent else c.bdI,
+        animationSpec = tween(220),
+        label = "pill_track",
+    )
+    // 48dp track, 3dp padding each side, 20dp knob → travel = 48 - 6 - 20 = 22dp.
+    val knobX by animateDpAsState(
+        targetValue = if (on) 22.dp else 0.dp,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "pill_knob",
+    )
     Box(
         Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (on) c.accent else c.bdI)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
+            .size(width = 48.dp, height = 26.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(trackColor)
+            .padding(3.dp),
     ) {
-        KText(if (on) "ON" else "OFF", size = 11, color = if (on) Color.White else c.txtM, weight = FontWeight.Bold)
+        Box(
+            Modifier
+                .offset(x = knobX)
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+        )
     }
 }
 
@@ -1085,6 +1129,15 @@ private fun SingleLineInput(value: String, onValueChange: (String) -> Unit, plac
 @Composable
 private fun StorageBar(stats: StorageStats?) {
     val c = KetoTheme.colors
+    // Animate the fill from 0 → actual percentage when the page opens.
+    var targetFraction by remember { mutableFloatStateOf(0f) }
+    val animatedPct by animateFloatAsState(
+        targetValue = targetFraction,
+        animationSpec = tween(700, easing = FastOutSlowInEasing),
+        label = "storage_fill",
+    )
+    LaunchedEffect(stats?.pct) { targetFraction = stats?.pct ?: 0f }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -1109,11 +1162,10 @@ private fun StorageBar(stats: StorageStats?) {
                 .clip(RoundedCornerShape(3.dp))
                 .background(c.surf2),
         ) {
-            val pct = stats?.pct ?: 0f
-            if (pct > 0f) {
+            if (animatedPct > 0f) {
                 Box(
                     Modifier
-                        .fillMaxWidth(pct)
+                        .fillMaxWidth(animatedPct)
                         .height(6.dp)
                         .clip(RoundedCornerShape(3.dp))
                         .background(c.accent),

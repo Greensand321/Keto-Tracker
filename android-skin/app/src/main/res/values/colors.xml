@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the default "Midnight" web theme background (#060d18). -->
+    <color name="keto_bg">#060d18</color>
+    <!-- Gold accent used as the notification LED / icon tint colour. -->
+    <color name="keto_gold">#F5C842</color>
+
+    <!-- Home-screen widget palette (static — widgets can't read the in-app theme). -->
+    <color name="widget_bg">#0E1626</color>
+    <color name="widget_red">#E0556B</color>
+    <color name="widget_text">#E8EDF5</color>
+    <color name="widget_muted">#8A93A5</color>
+</resources>

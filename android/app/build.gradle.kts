@@ -39,6 +39,14 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests {
+            // DayRepository logs decode failures via android.util.Log, which
+            // throws "not mocked" on the plain JVM unless this is set.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {

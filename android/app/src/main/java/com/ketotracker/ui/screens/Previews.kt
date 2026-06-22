@@ -17,7 +17,7 @@ private fun vmAt(step: Step, themeId: String = "midnight"): AppViewModel =
         editAt(step.ordinal)
     }
 
-// ── All 8 Wizard Steps (Midnight dark theme) ──────────────────────────────────
+// ── All 7 Wizard Steps (Midnight dark theme) ──────────────────────────────────
 
 @Preview(name = "Step 1 — Breakfast", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
@@ -49,19 +49,13 @@ private fun PreviewHeart() {
     KetoTracker("midnight") { WizardScreen(vmAt(Step.HEART)) }
 }
 
-@Preview(name = "Step 6 — Flags", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Step 6 — Flags & Notes", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
 private fun PreviewFlags() {
     KetoTracker("midnight") { WizardScreen(vmAt(Step.FLAGS)) }
 }
 
-@Preview(name = "Step 7 — Notes", showBackground = true, heightDp = 780, widthDp = 390)
-@Composable
-private fun PreviewNotes() {
-    KetoTracker("midnight") { WizardScreen(vmAt(Step.NOTES)) }
-}
-
-@Preview(name = "Step 8 — Summary (today)", showBackground = true, heightDp = 780, widthDp = 390)
+@Preview(name = "Step 7 — Summary (today)", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
 private fun PreviewSummary() {
     KetoTracker("midnight") { WizardScreen(vmAt(Step.SUMMARY)) }
@@ -69,7 +63,7 @@ private fun PreviewSummary() {
 
 // ── Summary with data filled in ───────────────────────────────────────────────
 
-@Preview(name = "Step 8 — Summary (with data)", showBackground = true, heightDp = 900, widthDp = 390)
+@Preview(name = "Step 7 — Summary (with data)", showBackground = true, heightDp = 900, widthDp = 390)
 @Composable
 private fun PreviewSummaryFilled() {
     val vm = AppViewModel.preview().apply {
@@ -183,5 +177,5 @@ private fun PreviewForest() {
 @Preview(name = "Theme — Ember (dark)", showBackground = true, heightDp = 780, widthDp = 390)
 @Composable
 private fun PreviewEmber() {
-    KetoTracker("ember") { WizardScreen(vmAt(Step.NOTES, "ember")) }
+    KetoTracker("ember") { WizardScreen(vmAt(Step.FLAGS, "ember")) }
 }
