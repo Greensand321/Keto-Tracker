@@ -1,7 +1,15 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+)
 
 package com.ketotracker.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,11 +24,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,31 +84,79 @@ fun OverviewSheet(vm: AppViewModel, onJump: (String) -> Unit, onClose: () -> Uni
             }
             return@FullScreenSheet
         }
+
+        // Stagger each card in from below on open. visibleKeys is additive —
+        // keys are never removed so already-visible items stay stable after a delete.
+        val visibleKeys = remember { mutableStateListOf<String>() }
+        LaunchedEffect(Unit) {
+            keys.forEachIndexed { i, key ->
+                delay(i * 32L)
+                if (key !in visibleKeys) visibleKeys.add(key)
+            }
+        }
+
         LazyColumn(
             Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            items(keys) { key ->
+            items(keys, key = { it }) { key ->
                 val e = vm.entryFor(key)
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (e.notInKeto) c.red.copy(alpha = 0.08f) else c.surf)
-                        .border(1.dp, c.bd, RoundedCornerShape(16.dp))
-                        .clickable { onJump(key) }
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+
+                AnimatedVisibility(
+                    visible = key in visibleKeys,
+                    enter = slideInVertically(tween(220)) { it / 2 } + fadeIn(tween(220)),
                 ) {
-                    KText(DateUtils.fmtDate(key), size = 15, color = c.gold, weight = FontWeight.Bold)
-                    listOf("🍳" to e.breakfast, "🥗" to e.lunch, "🍽️" to e.dinner).forEach { (ic, txt) ->
-                        if (txt.isNotEmpty()) KText("$ic $txt", size = 13, color = c.txtM, maxLines = 1)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        e.energy?.let { Stat("⚡", "$it/5") }
-                        e.happiness?.let { Stat("😊", "$it/5") }
-                        if (e.tested) Stat("🧪", "Tested")
-                        if (e.notInKeto) Stat("⚠️", "Off")
+                    // Swipe left to delete. The background turns red as the swipe progresses.
+                    val swipeState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { v ->
+                            if (v == SwipeToDismissBoxValue.EndToStart) { vm.deleteDay(key); true }
+                            else false
+                        },
+                    )
+                    SwipeToDismissBox(
+                        state = swipeState,
+                        enableDismissFromEndToStart = true,
+                        enableDismissFromStartToEnd = false,
+                        backgroundContent = {
+                            val swipeBg by animateColorAsState(
+                                targetValue = if (swipeState.targetValue == SwipeToDismissBoxValue.EndToStart)
+                                    c.red else c.surf2,
+                                animationSpec = tween(180),
+                                label = "swipe_bg",
+                            )
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(swipeBg)
+                                    .padding(end = 20.dp),
+                                contentAlignment = Alignment.CenterEnd,
+                            ) {
+                                KText("🗑️", size = 22)
+                            }
+                        },
+                    ) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (e.notInKeto) c.red.copy(alpha = 0.08f) else c.surf)
+                                .border(1.dp, c.bd, RoundedCornerShape(16.dp))
+                                .clickable { onJump(key) }
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            KText(DateUtils.fmtDate(key), size = 15, color = c.gold, weight = FontWeight.Bold)
+                            listOf("🍳" to e.breakfast, "🥗" to e.lunch, "🍽️" to e.dinner).forEach { (ic, txt) ->
+                                if (txt.isNotEmpty()) KText("$ic $txt", size = 13, color = c.txtM, maxLines = 1)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                e.energy?.let { Stat("⚡", "$it/5") }
+                                e.happiness?.let { Stat("😊", "$it/5") }
+                                if (e.tested) Stat("🧪", "Tested")
+                                if (e.notInKeto) Stat("⚠️", "Off")
+                            }
+                        }
                     }
                 }
             }

@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -131,6 +132,8 @@ fun KText(
     letterSpacing: Float = 0f,
     modifier: Modifier = Modifier,
     maxLines: Int = Int.MAX_VALUE,
+    softWrap: Boolean = true,
+    overflow: TextOverflow = TextOverflow.Clip,
 ) {
     androidx.compose.material3.Text(
         text = text,
@@ -141,6 +144,8 @@ fun KText(
         letterSpacing = letterSpacing.sp,
         lineHeight = (size * 1.25).sp,
         maxLines = maxLines,
+        softWrap = softWrap,
+        overflow = overflow,
     )
 }
 
