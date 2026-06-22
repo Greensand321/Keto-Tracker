@@ -21,6 +21,7 @@ import com.ketotracker.data.DateUtils
 import com.ketotracker.data.DayEntry
 import com.ketotracker.data.Heart
 import com.ketotracker.data.Meal
+import com.ketotracker.data.SUPPLEMENT_DEFAULTS
 import com.ketotracker.data.SnapshotMeta
 import com.ketotracker.data.Step
 import com.ketotracker.data.db.KetoDatabase
@@ -123,6 +124,10 @@ class AppViewModel(
     var quickSelectItems by mutableStateOf(DEFAULT_QUICK_FOODS)
         private set
 
+    // ── Supplements ───────────────────────────────────────────────────────────
+    var supplementItems by mutableStateOf(SUPPLEMENT_DEFAULTS)
+        private set
+
     // ── Periodic backup ───────────────────────────────────────────────────────
     var backupEnabled by mutableStateOf(false)
         private set
@@ -144,9 +149,10 @@ class AppViewModel(
             viewModelScope.launch { prefs.lightAutoTheme.collect { id -> lightAutoThemeId = id } }
             viewModelScope.launch { prefs.snapshots.collect { snaps -> snapshots = snaps } }
             viewModelScope.launch {
-                prefs.quickSelectItems.collect { items ->
-                    quickSelectItems = items ?: DEFAULT_QUICK_FOODS
-                }
+                quickSelectItems = prefs.quickSelectItems.first() ?: DEFAULT_QUICK_FOODS
+            }
+            viewModelScope.launch {
+                supplementItems = prefs.supplementItems.first() ?: SUPPLEMENT_DEFAULTS
             }
             viewModelScope.launch { prefs.backupEnabled.collect { on -> backupEnabled = on } }
             viewModelScope.launch { prefs.backupFrequency.collect { freq -> backupFrequency = freq } }
@@ -179,6 +185,7 @@ class AppViewModel(
 
         /** Matches the web app's `maxlength="40"` on the quick-select add input. */
         private const val MAX_QUICK_SELECT_ITEM_LENGTH = 40
+        private const val MAX_SUPPLEMENT_ITEM_LENGTH = 40
 
         /** Production factory — wires Room + DataStore. */
         fun factory(app: Application): ViewModelProvider.Factory = viewModelFactory {
@@ -656,6 +663,35 @@ class AppViewModel(
         viewModelScope.launch {
             runCatching { prefs?.setQuickSelectItems(items) }
                 .onFailure { reportError("Couldn't save quick-select items", it) }
+        }
+    }
+
+    // ── Supplements ───────────────────────────────────────────────────────────
+
+    fun addSupplementItem(name: String) {
+        val trimmed = name.trim().take(MAX_SUPPLEMENT_ITEM_LENGTH)
+        if (trimmed.isEmpty()) return
+        if (supplementItems.any { it.equals(trimmed, ignoreCase = true) }) return
+        val updated = supplementItems + trimmed
+        supplementItems = updated
+        persistSupplementItems(updated)
+    }
+
+    fun removeSupplementItem(name: String) {
+        val updated = supplementItems.filter { it != name }
+        supplementItems = updated
+        persistSupplementItems(updated)
+    }
+
+    fun resetSupplementDefaults() {
+        supplementItems = SUPPLEMENT_DEFAULTS
+        persistSupplementItems(SUPPLEMENT_DEFAULTS)
+    }
+
+    private fun persistSupplementItems(items: List<String>) {
+        viewModelScope.launch {
+            runCatching { prefs?.setSupplementItems(items) }
+                .onFailure { reportError("Couldn't save supplement items", it) }
         }
     }
 
