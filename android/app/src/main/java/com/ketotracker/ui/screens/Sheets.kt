@@ -1,4 +1,5 @@
 @file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
     androidx.compose.material3.ExperimentalMaterial3Api::class,
 )
@@ -7,12 +8,18 @@ package com.ketotracker.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +45,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -178,7 +186,7 @@ private fun Stat(icon: String, value: String) {
     }
 }
 
-// ── Supplements: chips with tap-to-increment counts ─────────────────────────
+// ── Supplements: chips with tap-to-increment, long-press-to-clear ───────────
 @Composable
 fun SupplementsSheet(vm: AppViewModel, onClose: () -> Unit) {
     val c = KetoTheme.colors
@@ -187,7 +195,7 @@ fun SupplementsSheet(vm: AppViewModel, onClose: () -> Unit) {
             Modifier.fillMaxSize().padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            KText("Tap to add one. Tap again to add more; long-press a count to clear.", size = 13, color = c.txtM)
+            KText("Tap to add · Long-press to clear.", size = 13, color = c.txtM)
             FlowChips {
                 vm.supplementItems.forEach { name ->
                     val count = vm.entry.supplements[name] ?: 0
@@ -207,25 +215,54 @@ fun SupplementsSheet(vm: AppViewModel, onClose: () -> Unit) {
 private fun SupplementChip(name: String, count: Int, onTap: () -> Unit, onClear: () -> Unit) {
     val c = KetoTheme.colors
     val active = count > 0
-    Box {
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessHigh),
+        label = "suppChipScale",
+    )
+    val animBg by animateColorAsState(
+        targetValue = if (active) c.accent.copy(alpha = 0.15f) else c.surf,
+        animationSpec = tween(220),
+        label = "suppChipBg",
+    )
+    val animBorder by animateColorAsState(
+        targetValue = if (active) c.accent else c.bdI,
+        animationSpec = tween(220),
+        label = "suppChipBorder",
+    )
+    val animText by animateColorAsState(
+        targetValue = if (active) c.accent else c.txt,
+        animationSpec = tween(220),
+        label = "suppChipText",
+    )
+
+    Box(Modifier.scale(pressScale)) {
         Box(
             Modifier
                 .clip(RoundedCornerShape(20.dp))
-                .background(if (active) c.accent.copy(alpha = 0.15f) else c.surf)
-                .border(1.5.dp, if (active) c.accent else c.bdI, RoundedCornerShape(20.dp))
-                .clickable { onTap() }
+                .background(animBg)
+                .border(1.5.dp, animBorder, RoundedCornerShape(20.dp))
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onTap,
+                    onLongClick = onClear,
+                )
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
-            KText(name, size = 15, color = if (active) c.accent else c.txt, weight = FontWeight.SemiBold)
+            KText(name, size = 15, color = animText, weight = FontWeight.SemiBold)
         }
+        // Count badge — display only, tap the chip to add, long-press to clear
         if (active) {
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
                     .size(20.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(c.accent)
-                    .clickable { onClear() },
+                    .background(c.accent),
                 contentAlignment = Alignment.Center,
             ) {
                 KText("$count", size = 11, color = Color.White, weight = FontWeight.ExtraBold)
@@ -281,15 +318,38 @@ fun QuickSelectSheet(vm: AppViewModel, meal: Meal, onClose: () -> Unit) {
 @Composable
 private fun FoodChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val c = KetoTheme.colors
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessHigh),
+        label = "foodChipScale",
+    )
+    val animBg by animateColorAsState(
+        targetValue = if (selected) c.accent.copy(alpha = 0.15f) else c.surf,
+        animationSpec = tween(200),
+        label = "foodChipBg",
+    )
+    val animBorder by animateColorAsState(
+        targetValue = if (selected) c.accent else c.bdI,
+        animationSpec = tween(200),
+        label = "foodChipBorder",
+    )
+    val animText by animateColorAsState(
+        targetValue = if (selected) c.accent else c.txt,
+        animationSpec = tween(200),
+        label = "foodChipText",
+    )
     Box(
         Modifier
+            .scale(pressScale)
             .clip(RoundedCornerShape(20.dp))
-            .background(if (selected) c.accent.copy(alpha = 0.15f) else c.surf)
-            .border(1.5.dp, if (selected) c.accent else c.bdI, RoundedCornerShape(20.dp))
-            .clickable { onClick() }
+            .background(animBg)
+            .border(1.5.dp, animBorder, RoundedCornerShape(20.dp))
+            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        KText(label, size = 15, color = if (selected) c.accent else c.txt, weight = FontWeight.SemiBold)
+        KText(label, size = 15, color = animText, weight = FontWeight.SemiBold)
     }
 }
 
