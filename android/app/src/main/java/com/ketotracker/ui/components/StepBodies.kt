@@ -170,7 +170,9 @@ private fun RatingRow(label: String, selected: Int?, labels: Map<Int, String>, o
                 val interactionSource = remember { MutableInteractionSource() }
                 val isPressed by interactionSource.collectIsPressedAsState()
                 val pressScale by animateFloatAsState(
-                    if (isPressed) 0.93f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessHigh), "ratingPress$n"
+                    targetValue = if (isPressed) 0.93f else 1f,
+                    animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessHigh),
+                    label = "ratingPress$n",
                 )
 
                 Column(
@@ -247,7 +249,9 @@ private fun androidx.compose.foundation.layout.RowScope.HeartChoice(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
-        if (isPressed) 0.94f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessHigh), "heartPress"
+        targetValue = if (isPressed) 0.94f else 1f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessHigh),
+        label = "heartPress",
     )
 
     Column(
