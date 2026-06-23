@@ -1,11 +1,21 @@
 package com.ketotracker.ui.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -71,19 +81,23 @@ fun SkipButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
     )
 }
 
-/** Gold-outlined "🥑 Keto" button shown on meal steps. Bounces on tap as positive feedback. */
+/**
+ * Gold-outlined "🥑 Keto" button. Press → shrinks (from PillButton), release → bounces
+ * bigger as positive feedback. The two scales are independent Animatables and compound
+ * naturally: press = 0.95×, release bounce = 1.16× → net ~1.10×.
+ */
 @Composable
 fun KetoButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = KetoTheme.colors
     var tapCount by remember { mutableIntStateOf(0) }
-    val scale = remember { Animatable(1f) }
+    val bounceScale = remember { Animatable(1f) }
     LaunchedEffect(tapCount) {
         if (tapCount > 0) {
-            scale.animateTo(1.16f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh))
-            scale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow))
+            bounceScale.animateTo(1.16f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh))
+            bounceScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow))
         }
     }
-    Box(modifier.scale(scale.value)) {
+    Box(modifier.scale(bounceScale.value)) {
         PillButton(
             text = "🥑 Keto",
             modifier = Modifier.fillMaxWidth(),
@@ -107,26 +121,44 @@ private fun PillButton(
     padding: PaddingValues = PaddingValues(horizontal = 20.dp, vertical = 17.dp),
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
+        label = "pillBtnScale",
+    )
+
     var m = modifier
+        .scale(pressScale)
         .clip(RoundedCornerShape(13.dp))
         .background(bg)
     if (border != null) m = m.border(1.dp, border, RoundedCornerShape(13.dp))
     Box(
-        modifier = m.clickable { onClick() }.padding(padding),
+        modifier = m
+            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+            .padding(padding),
         contentAlignment = Alignment.Center,
     ) {
-        // Single line, never wraps — keeps every action-row button the same
-        // height regardless of label length (e.g. "Next →" vs "🥑 Keto"),
-        // letting it overflow the padding slightly rather than wrapping to a
-        // taller two-line layout.
-        KText(
-            text,
-            size = 17,
-            color = textColor,
-            weight = weight,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Visible,
-        )
+        // AnimatedContent makes the label morph smoothly when text changes
+        // (e.g. "Next →" → "Finish ✓" on the last step before Summary).
+        AnimatedContent(
+            targetState = text,
+            transitionSpec = {
+                (fadeIn(tween(100)) + slideInVertically(tween(100)) { it / 2 }) togetherWith
+                (fadeOut(tween(80)) + slideOutVertically(tween(80)) { -it / 2 })
+            },
+            label = "pillBtnLabel",
+        ) { t ->
+            KText(
+                t,
+                size = 17,
+                color = textColor,
+                weight = weight,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Visible,
+            )
+        }
     }
 }
