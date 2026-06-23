@@ -1,4 +1,5 @@
 @file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
     androidx.compose.material3.ExperimentalMaterial3Api::class,
 )
@@ -13,6 +14,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -187,7 +189,7 @@ fun SupplementsSheet(vm: AppViewModel, onClose: () -> Unit) {
             Modifier.fillMaxSize().padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            KText("Tap to add one. Tap again to add more; long-press a count to clear.", size = 13, color = c.txtM)
+            KText("Tap to add · Long-press to clear.", size = 13, color = c.txtM)
             FlowChips {
                 vm.supplementItems.forEach { name ->
                     val count = vm.entry.supplements[name] ?: 0
@@ -213,7 +215,7 @@ private fun SupplementChip(name: String, count: Int, onTap: () -> Unit, onClear:
                 .clip(RoundedCornerShape(20.dp))
                 .background(if (active) c.accent.copy(alpha = 0.15f) else c.surf)
                 .border(1.5.dp, if (active) c.accent else c.bdI, RoundedCornerShape(20.dp))
-                .clickable { onTap() }
+                .combinedClickable(onClick = onTap, onLongClick = onClear)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
             KText(name, size = 15, color = if (active) c.accent else c.txt, weight = FontWeight.SemiBold)
@@ -224,8 +226,7 @@ private fun SupplementChip(name: String, count: Int, onTap: () -> Unit, onClear:
                     .align(Alignment.TopEnd)
                     .size(20.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(c.accent)
-                    .clickable { onClear() },
+                    .background(c.accent),
                 contentAlignment = Alignment.Center,
             ) {
                 KText("$count", size = 11, color = Color.White, weight = FontWeight.ExtraBold)
