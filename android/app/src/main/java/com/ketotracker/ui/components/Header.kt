@@ -1,15 +1,20 @@
 package com.ketotracker.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -19,10 +24,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ketotracker.ui.theme.KetoTheme
@@ -79,13 +87,21 @@ fun HeaderBar(
 @Composable
 private fun DateChip(text: String, onClick: () -> Unit) {
     val c = KetoTheme.colors
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
+        label = "dateChipScale",
+    )
     Box(
         Modifier
             .widthIn(min = 68.dp)
+            .scale(pressScale)
             .clip(RoundedCornerShape(9.dp))
             .background(c.surf2)
             .border(1.dp, c.bd, RoundedCornerShape(9.dp))
-            .clickable { onClick() }
+            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
             .padding(horizontal = 12.dp, vertical = 5.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -96,14 +112,22 @@ private fun DateChip(text: String, onClick: () -> Unit) {
 @Composable
 private fun IconButton(symbol: String, enabled: Boolean = true, onClick: () -> Unit) {
     val c = KetoTheme.colors
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed && enabled) 0.85f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
+        label = "iconBtnScale",
+    )
     Box(
         Modifier
             .size(34.dp)
+            .scale(pressScale)
             .alpha(if (enabled) 1f else 0.3f)
             .clip(RoundedCornerShape(9.dp))
             .background(c.surf2)
             .border(1.dp, c.bd, RoundedCornerShape(9.dp))
-            .clickable(enabled = enabled) { onClick() },
+            .clickable(interactionSource = interactionSource, indication = null, enabled = enabled) { onClick() },
         contentAlignment = Alignment.Center,
     ) {
         KText(symbol, size = 16, color = c.txt)

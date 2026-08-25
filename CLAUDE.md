@@ -49,7 +49,9 @@ android/app/src/main/java/com/ketotracker/
 │   │   └── PrefsStore.kt        #   DataStore<Preferences> — theme id + auto-theme prefs
 │   ├── photo/
 │   │   ├── PhotoStore.kt        #   on-disk compressed JPEGs in filesDir/photos/
-│   │   └── CameraCapture.kt     #   FileProvider capture target + stale-capture cleanup
+│   │   ├── CameraCapture.kt     #   FileProvider capture target + stale-capture cleanup
+│   │   ├── PhotoImport.kt       #   copies a picked/device-gallery Uri into a temp file for PhotoStore
+│   │   └── DeviceGalleryQuery.kt#   MediaStore query for device photos taken on a given date
 │   ├── notifications/
 │   │   └── NotificationHelper.kt#   reminder notification channel + builder
 │   └── io/
@@ -61,7 +63,9 @@ android/app/src/main/java/com/ketotracker/
 │   └── AppViewModel.kt          # Single ViewModel for the whole app (see "Application State")
 ├── work/
 │   ├── BackupWorker.kt          # WorkManager: periodic JSON backup to getExternalFilesDir("backups")
-│   └── ReminderWorker.kt        # WorkManager: daily reminder notification
+│   ├── ReminderScheduler.kt     # AlarmManager: exact-alarm scheduling for the daily reminder
+│   ├── ReminderReceiver.kt      # BroadcastReceiver: posts the reminder, re-arms the next alarm
+│   └── BootReceiver.kt          # BroadcastReceiver: re-arms the reminder alarm after reboot
 └── ui/
     ├── theme/
     │   ├── KetoTheme.kt         # KetoColors palette, KETO_THEMES (14 themes), THEME_LIST, KetoTracker() root
@@ -172,6 +176,20 @@ Photos live entirely outside the `DayEntry` JSON, as files (not in the DB):
 - **Capture**: `createCaptureTarget()` hands the system camera app a `content://` URI via
   `FileProvider` and `ActivityResultContracts.TakePicture()` — **no `CAMERA` permission**.
   The temp file lives in `cacheDir/captures/`; `clearStaleCaptures()` sweeps it on launch.
+- **Gallery picker**: "🖼️ Choose from Gallery" in `MealPhotoArea` uses
+  `ActivityResultContracts.PickVisualMedia()` — the system Photo Picker, which needs
+  **no storage permission at all**.
+- **Same-day device import**: "📅 Photos from This Day" (`DeviceDayPhotosButton` in
+  `PhotoComponents.kt`) queries `MediaStore` directly via `DeviceGalleryQuery.photosForDate()`
+  for photos already on the device (taken with another camera app, before this feature
+  existed, etc.) and shows them in a grid to import from. This is the **one** photo path that
+  needs a real runtime permission — `READ_MEDIA_IMAGES` (API 33+, or its
+  `READ_MEDIA_VISUAL_USER_SELECTED` partial-access counterpart on 34+) or
+  `READ_EXTERNAL_STORAGE` (below that) — since it bypasses the system-mediated picker.
+- **Shared import pipeline**: `importUriToTempFile()` (`data/photo/PhotoImport.kt`) copies any
+  picked/device `content://` `Uri` into the same `cacheDir/captures/` temp directory camera
+  captures use, so gallery-picked and same-day-imported photos feed the exact same
+  `PhotoStore.addFromCapture()` compression pipeline as a camera capture.
 - **Compression**: `PhotoStore.addFromCapture()` decodes with a memory-safe
   `inSampleSize`, corrects EXIF orientation, downscales to ≤900 px long edge, and
   re-encodes JPEG at quality 75. Max 5 photos per meal.
@@ -318,11 +336,27 @@ the Storage Access Framework pickers and one confirmation dialog.
 
 - **`work/BackupWorker.kt`** — WorkManager periodic job; writes a JSON backup to
   `getExternalFilesDir("backups")` (internal storage fallback), keeping the last 7 files.
-- **`work/ReminderWorker.kt`** — WorkManager daily job; posts a reminder notification.
+- **`work/ReminderScheduler.kt`** — schedules the daily reminder via
+  `AlarmManager.setExactAndAllowWhileIdle` (falling back to `setAndAllowWhileIdle` if the
+  `SCHEDULE_EXACT_ALARM` permission hasn't been granted on Android 12+), rather than a
+  WorkManager `PeriodicWorkRequest` — periodic work is deliberately inexact and can drift by
+  hours under Doze/battery optimization, which made the reminder feel random. Also exposes
+  `canScheduleExactAlarms()` / `requestExactAlarmPermission()`, surfaced in the Notifications
+  settings page.
+- **`work/ReminderReceiver.kt`** — the `BroadcastReceiver` the alarm fires into; posts the
+  reminder (same meal-completeness suppression logic as before) and always re-arms the next
+  day's alarm before finishing, since exact alarms are one-shot.
+- **`work/BootReceiver.kt`** — re-arms the reminder alarm after a device reboot, since exact
+  `AlarmManager` alarms (unlike WorkManager jobs) don't survive one.
 - **`data/notifications/NotificationHelper.kt`** — builds the notification channel + the
   reminder notification (gold icon tint via `R.color.keto_gold`).
-- **Permissions**: only `POST_NOTIFICATIONS` (Android 13+), requested at runtime from the
-  Notifications settings row. No camera or storage permission is needed.
+- **`data/prefs/PrefsStore.kt`** — persists `notificationHour` *and* `notificationMinute` (the
+  Notifications settings page has a full custom time picker, not just the three quick presets).
+- **Permissions**: `POST_NOTIFICATIONS` (Android 13+, requested at runtime from the
+  Notifications settings row), `SCHEDULE_EXACT_ALARM` (Android 12+, a user-grantable special
+  permission — the settings page shows a banner + button to grant it when missing), and
+  `RECEIVE_BOOT_COMPLETED`. No camera permission is needed (see "Photos" for the media
+  permissions used by the same-day device-gallery import).
 
 ---
 
