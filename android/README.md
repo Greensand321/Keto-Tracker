@@ -25,10 +25,11 @@ app/src/main/java/com/ketotracker/
 │   ├── DayEntrySurrogate.kt     # @Serializable surrogate (DayEntry ⇄ JSON)
 │   ├── Heart.kt / Meal.kt       # Small domain enums
 │   ├── Steps.kt                 # 7-step wizard enum + label/placeholder/supplement constants
+│   ├── Supplement.kt            # SupplementDose/SupplementSchedule models + AI-import prompt
 │   ├── DateUtils.kt             # ISO date-key helpers + month-grid math
 │   ├── db/                      # Room: DayEntryEntity (date PK + JSON data), Dao, KetoDatabase
 │   ├── repository/              # IDayRepository + DayRepository (Room) + FakeDayRepository (previews)
-│   ├── prefs/PrefsStore.kt      # DataStore: theme + auto-theme prefs
+│   ├── prefs/PrefsStore.kt      # DataStore: theme + auto-theme + supplement schedule prefs
 │   ├── photo/                   # PhotoStore (on-disk JPEGs) + camera capture + gallery/device-day import
 │   ├── notifications/           # Reminder notification channel + builder
 │   └── io/                      # Export/import, snapshot store, storage stats
@@ -77,6 +78,7 @@ Key design choices:
 | Photos (capture, gallery pick, same-day device import, compress, store, view) | ✅ | `PhotoStore`, `MealPhotoArea`, `DeviceGalleryQuery`, `PhotoViewer` |
 | Export / Import (JSON; merge/overwrite/skip) | ✅ | `DataPortability` (SAF) + `ImportConfirmDialog` |
 | Periodic backup + reminder notification | ✅ | `BackupWorker` (WorkManager), `ReminderScheduler`/`ReminderReceiver` (exact `AlarmManager` alarm) |
+| Supplement schedules (rotation, JSON import, AI-prompt copy) | ✅ | `SupplementSchedule`, `SupplementScheduleWidget`, `ScheduleImport` |
 | Storage usage stats | ✅ | `StorageUsage.compute()` + `StorageBar` |
 | Snackbar feedback | ✅ | `AppViewModel.messages` → `SnackbarHost` |
 | Snapshots (named in-app backups) | ⬜ | Disabled placeholder in Settings; IO scaffolding present |

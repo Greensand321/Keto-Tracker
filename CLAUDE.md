@@ -36,6 +36,7 @@ android/app/src/main/java/com/ketotracker/
 │   ├── Meal.kt                  # Meal enum (BREAKFAST/LUNCH/DINNER)
 │   ├── Steps.kt                 # Step enum (7-step wizard) + label/placeholder/supplement constants
 │   ├── Snapshot.kt              # Snapshot metadata model (feature partially built)
+│   ├── Supplement.kt            # SupplementDose/SupplementSchedule models + the AI-import prompt
 │   ├── DateUtils.kt             # ISO date-key helpers (todayKey, offKey, fmtDate, isToday/isFuture, monthGrid)
 │   ├── db/                      # Room
 │   │   ├── DayEntryEntity.kt    #   @Entity: (date TEXT PK, data TEXT) — JSON column
@@ -57,7 +58,8 @@ android/app/src/main/java/com/ketotracker/
 │   └── io/
 │       ├── DataPortability.kt   #   JSON encode/decode/merge for export & import
 │       ├── SnapshotStore.kt     #   snapshot persistence helper
-│       ├── ZipPortability.kt    #   zip bundling helper
+│       ├── ScheduleImport.kt    #   parses + validates an imported supplement schedule JSON file
+│       ├── ZipPortability.kt    #   zip bundling helper (day entries + photos + supplement schedules)
 │       └── StorageStats.kt      #   StorageUsage.compute() — DB file + photo dir sizing
 ├── model/
 │   └── AppViewModel.kt          # Single ViewModel for the whole app (see "Application State")
@@ -308,6 +310,49 @@ A bottom-anchored overlay (`Overlay.CALENDAR`) opened from the header date chip.
 
 Because `vm.jumpTo()` falls back to a blank `DayEntry` for unlogged dates, the calendar
 doubles as a "jump to any date" picker.
+
+---
+
+## Supplement Schedules — `data/Supplement.kt`, `ui/components/SupplementScheduleWidget.kt`
+
+A named, repeating supplement rotation — distinct from the flat, ad-hoc "As-Needed
+Supplements" chip list (`vm.supplementItems`, `data/prefs/PrefsStore.kt`'s `supplementItems`).
+Both write into the same `DayEntry.supplements: Map<String, Int>` map by supplement name, so a
+name that happens to appear on both a schedule and the As-Needed list shares one taken/not-taken
+state — an accepted simplification, not a bug.
+
+- **Model**: `SupplementSchedule(id, name, cycleLengthDays, days, anchorDate)` — `days` has
+  exactly `cycleLengthDays` entries, each a `List<SupplementDose(name, dosage)>`. `days[0]` is
+  "Day 1", the day that falls on `anchorDate`.
+- **Rotation day is computed live**, not stored per `DayEntry`: `AppViewModel.scheduleDayIndex()`
+  takes `((daysBetween(anchorDate, viewedDate) % cycleLength) + cycleLength) % cycleLength` via
+  `LocalDate`/`ChronoUnit.DAYS` (matching the rest of the app's date math — never epoch millis).
+  This is a deliberate trade-off: editing a schedule changes what every date, past or future,
+  recommends — there's no per-day snapshot/history of what a schedule looked like when a dose was
+  actually taken.
+- **Multiple schedules, one active**: `PrefsStore.schedules` (JSON list, DataStore) +
+  `PrefsStore.activeScheduleId` — only the active schedule drives the widget; others stay
+  configured for quick switching (e.g. a "Travel" rotation).
+- **Widget**: `SupplementScheduleWidget` on the FLAGS step shows the active schedule's doses for
+  the viewed day, each tap-to-toggle taken/not-taken via `AppViewModel.toggleScheduledDose()`
+  (writes into `entry.supplements`, same map the As-Needed chips use). Tapping elsewhere on the
+  card opens `Overlay.SUPPLEMENT_SCHEDULE` (`SupplementScheduleSheet` in `Sheets.kt`) — the full
+  rotation plus a schedule switcher when more than one exists.
+- **Settings** (`SettingsPage.SUPPLEMENT_SCHEDULE`): list schedules, activate one, or open the
+  full editor (name, cycle length, an anchor-date nudge, and per-day add/remove dose rows).
+- **Import**: Settings' "Import Schedule" reads a JSON file via SAF `OpenDocument`, validated by
+  `ScheduleImport.parse()` against a strict schema (every problem is collected and shown, not
+  silently coerced — the file is often AI-generated and unchecked). "Copy AI Prompt" copies
+  `SUPPLEMENT_SCHEDULE_AI_PROMPT` — schema + instructions — to the clipboard so any AI chat tool
+  can produce an importable file without the user hand-typing it. A successful import always
+  creates a **new** schedule (auto-suffixing the name on collision, e.g. "Rotation (2)") and opens
+  it in the editor for immediate tweaks — imports never overwrite an existing schedule.
+- **Backup**: `ZipPortability` bundles `schedules.json` (all schedules + the active id) inside the
+  full ZIP backup alongside `data.json` and `photos/`. On restore, schedules are deduped by id
+  (re-importing your own backup doesn't create duplicates) and the backup's active schedule is
+  only adopted if none is currently set. Schedules are **not** included in the plain JSON
+  day-log export (`DataPortability`) — that format and its merge semantics are about day entries
+  only; schedules are configuration, not log data (same treatment as theme/notification prefs).
 
 ---
 

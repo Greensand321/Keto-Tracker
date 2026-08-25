@@ -76,7 +76,7 @@ import com.ketotracker.ui.components.ThemePanel
 import com.ketotracker.ui.theme.KetoTheme
 import kotlinx.coroutines.delay
 
-private enum class Overlay { NONE, THEME, OVERVIEW, CALENDAR, SUPPLEMENTS, QUICK_SELECT, SETTINGS }
+private enum class Overlay { NONE, THEME, OVERVIEW, CALENDAR, SUPPLEMENTS, SUPPLEMENT_SCHEDULE, QUICK_SELECT, SETTINGS }
 
 // Bottom-sheet overlays slide up from below + fade in; reverse on close.
 // Using the same spec for every overlay keeps motion consistent.
@@ -202,6 +202,7 @@ fun WizardScreen(vm: AppViewModel) {
                                 overlay = Overlay.QUICK_SELECT
                             },
                             onSupplements = { overlay = Overlay.SUPPLEMENTS },
+                            onOpenSchedule = { overlay = Overlay.SUPPLEMENT_SCHEDULE },
                             onViewPhoto = { viewingPhoto = it },
                             onKeto = { ketoStampTick++ },
                         )
@@ -252,6 +253,13 @@ fun WizardScreen(vm: AppViewModel) {
         }
         AnimatedVisibility(overlay == Overlay.SUPPLEMENTS, enter = OVERLAY_ENTER, exit = OVERLAY_EXIT) {
             SupplementsSheet(vm = vm, onClose = { overlay = Overlay.NONE })
+        }
+        AnimatedVisibility(overlay == Overlay.SUPPLEMENT_SCHEDULE, enter = OVERLAY_ENTER, exit = OVERLAY_EXIT) {
+            SupplementScheduleSheet(
+                vm = vm,
+                onManage = { overlay = Overlay.SETTINGS },
+                onClose = { overlay = Overlay.NONE },
+            )
         }
         AnimatedVisibility(overlay == Overlay.QUICK_SELECT, enter = OVERLAY_ENTER, exit = OVERLAY_EXIT) {
             QuickSelectSheet(
@@ -350,6 +358,7 @@ private fun StepContent(
     frozenStep: Step,
     onQuickSelect: (Meal) -> Unit,
     onSupplements: () -> Unit,
+    onOpenSchedule: () -> Unit,
     onViewPhoto: (MealPhoto) -> Unit,
     onKeto: () -> Unit,
 ) {
@@ -391,6 +400,12 @@ private fun StepContent(
                 onToggleNotInKeto = { vm.toggleNotInKeto() },
                 onToggleTested = { vm.toggleTested() },
                 onOpenSupplements = onSupplements,
+                asNeededItems = vm.supplementItems,
+                activeSchedule = vm.activeSchedule,
+                scheduleDayIndex = vm.activeSchedule?.let { vm.scheduleDayIndex(it, vm.viewedKey) } ?: 0,
+                scheduledDoses = vm.scheduledDosesForViewedDay(),
+                onToggleDose = { vm.toggleScheduledDose(it) },
+                onOpenSchedule = onOpenSchedule,
             )
         }
 

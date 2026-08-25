@@ -25,8 +25,11 @@ import com.ketotracker.data.Meal
 import com.ketotracker.data.SUPPLEMENT_DEFAULTS
 import com.ketotracker.data.SnapshotMeta
 import com.ketotracker.data.Step
+import com.ketotracker.data.SupplementDose
+import com.ketotracker.data.SupplementSchedule
 import com.ketotracker.data.db.KetoDatabase
 import com.ketotracker.data.io.DataPortability
+import com.ketotracker.data.io.ScheduleImport
 import com.ketotracker.data.io.SnapshotStore
 import com.ketotracker.data.io.StorageStats
 import com.ketotracker.data.io.StorageUsage
@@ -43,7 +46,9 @@ import com.ketotracker.data.repository.IDayRepository
 import com.ketotracker.work.BackupWorker
 import com.ketotracker.work.ReminderScheduler
 import java.io.File
+import java.time.LocalDate
 import java.time.LocalTime
+import java.time.temporal.ChronoUnit
 
 class AppViewModel(
     private val repo: IDayRepository,
@@ -109,6 +114,8 @@ class AppViewModel(
     private var pendingDupEntries: Map<String, DayEntry> = emptyMap()
     // Non-empty when the import came from a ZIP file — photos are restored after entries are committed.
     private var pendingZipPhotos: Map<String, ByteArray> = emptyMap()
+    private var pendingZipSchedules: List<SupplementSchedule> = emptyList()
+    private var pendingZipActiveScheduleId: String? = null
 
     // Populated on demand by `loadStorageStats` — native counterpart of the
     // web app's `getStorageStats()` (see CLAUDE.md "Data Access"). Sizing the
@@ -125,9 +132,22 @@ class AppViewModel(
     var quickSelectItems by mutableStateOf(DEFAULT_QUICK_FOODS)
         private set
 
-    // ── Supplements ───────────────────────────────────────────────────────────
+    // ── Supplements (as-needed chips) ───────────────────────────────────────────
     var supplementItems by mutableStateOf(SUPPLEMENT_DEFAULTS)
         private set
+
+    // ── Supplement schedules ─────────────────────────────────────────────────
+    var schedules by mutableStateOf<List<SupplementSchedule>>(emptyList())
+        private set
+    var activeScheduleId by mutableStateOf<String?>(null)
+        private set
+
+    /** Parsed-but-unconfirmed schedule from Settings' "Import Schedule" picker (or the
+     * problems found instead) — mirrors [pendingImport]'s preview-before-commit shape. */
+    var pendingScheduleImport by mutableStateOf<PendingScheduleImport?>(null)
+        private set
+
+    val activeSchedule: SupplementSchedule? get() = schedules.find { it.id == activeScheduleId }
 
     // ── Periodic backup ───────────────────────────────────────────────────────
     var backupEnabled by mutableStateOf(false)
@@ -157,6 +177,8 @@ class AppViewModel(
             viewModelScope.launch {
                 supplementItems = prefs.supplementItems.first() ?: SUPPLEMENT_DEFAULTS
             }
+            viewModelScope.launch { prefs.schedules.collect { list -> schedules = list } }
+            viewModelScope.launch { prefs.activeScheduleId.collect { id -> activeScheduleId = id } }
             viewModelScope.launch { prefs.backupEnabled.collect { on -> backupEnabled = on } }
             viewModelScope.launch { prefs.backupFrequency.collect { freq -> backupFrequency = freq } }
             viewModelScope.launch { prefs.notificationsEnabled.collect { on -> notificationsEnabled = on } }
@@ -390,6 +412,12 @@ class AppViewModel(
         it.copy(supplements = m)
     }
 
+    /** Toggles a scheduled dose taken/not-taken for the day being viewed — the tap target on [SupplementScheduleWidget]. */
+    fun toggleScheduledDose(name: String) {
+        val taken = (entry.supplements[name] ?: 0) > 0
+        setSupplement(name, if (taken) 0 else 1)
+    }
+
     // ── Photos ────────────────────────────────────────────────────────────────
     // Native counterpart to the web app's getMealPhotos/addMealPhoto/
     // removeMealPhotoAt (see CLAUDE.md "IndexedDB (photo store)"). Files live
@@ -476,7 +504,7 @@ class AppViewModel(
         val store = photoStore ?: return
         val snapshot = allEntries
         viewModelScope.launch {
-            val ok = ZipPortability.export(context, uri, snapshot, store)
+            val ok = ZipPortability.export(context, uri, snapshot, store, schedules, activeScheduleId)
             if (ok) notify("Full backup exported — ${snapshot.size} day(s) + photos ✓")
             else notify("Export failed")
         }
@@ -488,6 +516,8 @@ class AppViewModel(
             if (result == null) { notify("Could not read backup file"); return@launch }
             if (result.entries.isEmpty()) { notify("No valid entries found in backup"); return@launch }
             pendingZipPhotos = result.photos
+            pendingZipSchedules = result.schedules
+            pendingZipActiveScheduleId = result.activeScheduleId
             val newEntries = result.entries.filterKeys { it !in allEntries }
             val dupEntries = result.entries.filterKeys { it in allEntries }
             pendingNewEntries = newEntries
@@ -506,10 +536,14 @@ class AppViewModel(
         val newEntries = pendingNewEntries
         val dupEntries = pendingDupEntries
         val zipPhotos = pendingZipPhotos
+        val zipSchedules = pendingZipSchedules
+        val zipActiveScheduleId = pendingZipActiveScheduleId
         pendingImport = null
         pendingNewEntries = emptyMap()
         pendingDupEntries = emptyMap()
         pendingZipPhotos = emptyMap()
+        pendingZipSchedules = emptyList()
+        pendingZipActiveScheduleId = null
 
         viewModelScope.launch {
             val toWrite = LinkedHashMap<String, DayEntry>(newEntries)
@@ -542,6 +576,23 @@ class AppViewModel(
                         }
                         if (restored > 0) { photoTick++; notify("Restored $restored photo(s) ✓") }
                     }
+
+                    // Restore schedules from ZIP import — skip any whose id already exists
+                    // (re-importing your own backup shouldn't create duplicates), and only
+                    // adopt the backup's active schedule if none is currently set.
+                    if (zipSchedules.isNotEmpty()) {
+                        val existingIds = schedules.map { it.id }.toSet()
+                        val toAdd = zipSchedules.filter { it.id !in existingIds }
+                        if (toAdd.isNotEmpty()) {
+                            val updated = schedules + toAdd
+                            schedules = updated
+                            persistSchedules(updated)
+                            notify("Restored ${toAdd.size} supplement schedule(s) ✓")
+                        }
+                        if (activeScheduleId == null && zipActiveScheduleId != null) {
+                            setActiveSchedule(zipActiveScheduleId)
+                        }
+                    }
                 }
                 .onFailure { reportError("Import failed", it) }
         }
@@ -552,6 +603,8 @@ class AppViewModel(
         pendingNewEntries = emptyMap()
         pendingDupEntries = emptyMap()
         pendingZipPhotos = emptyMap()
+        pendingZipSchedules = emptyList()
+        pendingZipActiveScheduleId = null
     }
 
     /**
@@ -699,6 +752,93 @@ class AppViewModel(
         }
     }
 
+    // ── Supplement schedules ─────────────────────────────────────────────────
+
+    /**
+     * 0-based rotation day index for [dateKey] under [schedule], computed live from
+     * [SupplementSchedule.anchorDate] rather than stored per entry — editing the schedule
+     * later changes what every date, past or future, recommends (see CLAUDE.md).
+     */
+    fun scheduleDayIndex(schedule: SupplementSchedule, dateKey: String): Int {
+        val anchor = runCatching { LocalDate.parse(schedule.anchorDate) }.getOrNull() ?: return 0
+        val date = runCatching { LocalDate.parse(dateKey) }.getOrNull() ?: return 0
+        val len = schedule.cycleLengthDays.toLong().coerceAtLeast(1)
+        val diff = ChronoUnit.DAYS.between(anchor, date)
+        return (((diff % len) + len) % len).toInt()
+    }
+
+    /** Recommended doses for the day currently being viewed, under the active schedule (empty if none). */
+    fun scheduledDosesForViewedDay(): List<SupplementDose> {
+        val schedule = activeSchedule ?: return emptyList()
+        val idx = scheduleDayIndex(schedule, viewedKey)
+        return schedule.days.getOrElse(idx) { emptyList() }
+    }
+
+    /** Creates or updates [schedule] (matched by id) and activates it if it's the first one ever added. */
+    fun saveSchedule(schedule: SupplementSchedule) {
+        val exists = schedules.any { it.id == schedule.id }
+        val updated = if (exists) schedules.map { if (it.id == schedule.id) schedule else it } else schedules + schedule
+        schedules = updated
+        persistSchedules(updated)
+        if (activeScheduleId == null) setActiveSchedule(schedule.id)
+    }
+
+    /** Deletes a schedule, falling back the active pointer to another remaining schedule (or none) if it was active. */
+    fun deleteSchedule(id: String) {
+        val updated = schedules.filter { it.id != id }
+        schedules = updated
+        persistSchedules(updated)
+        if (activeScheduleId == id) setActiveSchedule(updated.lastOrNull()?.id)
+    }
+
+    fun setActiveSchedule(id: String?) {
+        activeScheduleId = id
+        viewModelScope.launch {
+            runCatching { prefs?.setActiveScheduleId(id) }
+                .onFailure { reportError("Couldn't save active schedule", it) }
+        }
+    }
+
+    private fun persistSchedules(list: List<SupplementSchedule>) {
+        viewModelScope.launch {
+            runCatching { prefs?.setSchedules(list) }
+                .onFailure { reportError("Couldn't save supplement schedule", it) }
+        }
+    }
+
+    /** Reads and validates a picked JSON file, staging the result (or errors) in [pendingScheduleImport]. */
+    fun importSchedule(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val text = DataPortability.read(context, uri)
+            if (text == null) { notify("Could not read file"); return@launch }
+            pendingScheduleImport = when (val result = ScheduleImport.parse(text)) {
+                is ScheduleImport.Result.Success -> PendingScheduleImport(result.schedule, errors = emptyList())
+                is ScheduleImport.Result.Failure -> PendingScheduleImport(schedule = null, errors = result.errors)
+            }
+        }
+    }
+
+    /** Commits the pending import as a new schedule — always additive, never overwrites an existing one. */
+    fun confirmScheduleImport() {
+        val schedule = pendingScheduleImport?.schedule ?: return
+        pendingScheduleImport = null
+        val uniqueName = uniqueScheduleName(schedule.name)
+        saveSchedule(schedule.copy(name = uniqueName))
+        notify("Imported \"$uniqueName\" ✓")
+    }
+
+    fun cancelScheduleImport() {
+        pendingScheduleImport = null
+    }
+
+    /** Auto-suffixes on a name collision ("Standard Rotation" → "Standard Rotation (2)") rather than overwriting. */
+    private fun uniqueScheduleName(name: String): String {
+        if (schedules.none { it.name.equals(name, ignoreCase = true) }) return name
+        var n = 2
+        while (schedules.any { it.name.equals("$name ($n)", ignoreCase = true) }) n++
+        return "$name ($n)"
+    }
+
     // ── Periodic backup ───────────────────────────────────────────────────────
 
     fun setBackupEnabled(context: Context, enabled: Boolean) {
@@ -820,6 +960,9 @@ enum class RatingField { ENERGY, HAPPINESS, PORTION }
 
 /** Summary counts shown by the import-confirmation dialog (CLAUDE.md "Import"). */
 data class PendingImport(val newCount: Int, val dupCount: Int)
+
+/** Result of parsing a picked schedule JSON file — [schedule] is null when [errors] is non-empty. */
+data class PendingScheduleImport(val schedule: SupplementSchedule?, val errors: List<String>)
 
 /** How to resolve duplicate days during import — mirrors the web app's three confirm() choices. */
 enum class ImportMode { MERGE, OVERWRITE, SKIP }
