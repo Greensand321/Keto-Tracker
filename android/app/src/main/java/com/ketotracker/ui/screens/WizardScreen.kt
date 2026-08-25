@@ -400,6 +400,7 @@ private fun StepContent(
         if (frozenStep.isMeal) {
             MealPhotoArea(
                 meal = frozenStep.meal!!,
+                date = vm.viewedKey,
                 photos = vm.mealPhotos(frozenStep.meal!!),
                 onCaptured = { file -> vm.addPhoto(frozenStep.meal!!, file) },
                 onView = onViewPhoto,
