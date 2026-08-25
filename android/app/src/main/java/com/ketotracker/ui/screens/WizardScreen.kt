@@ -45,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -321,17 +322,15 @@ private fun FinishCelebration() {
         scale.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
     }
     Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.38f))
-            .clickable(enabled = false) {},
+        Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             Modifier
                 .scale(scale.value)
+                .shadow(elevation = 28.dp, shape = RoundedCornerShape(28.dp))
                 .clip(RoundedCornerShape(28.dp))
-                .background(KetoTheme.colors.surf)
+                .background(KetoTheme.colors.bg)
                 .padding(horizontal = 44.dp, vertical = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
