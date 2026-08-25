@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">Skin Tracker</string>
-    <string name="widget_flare_button">⚡ Log Flare-Up</string>
-    <string name="widget_flare_subtitle">Record a sudden reaction</string>
-    <string name="widget_description">Quickly log a sudden skin flare-up from your home screen.</string>
-</resources>
