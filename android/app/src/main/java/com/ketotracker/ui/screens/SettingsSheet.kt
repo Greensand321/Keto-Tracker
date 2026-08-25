@@ -68,6 +68,7 @@ import com.ketotracker.model.ImportMode
 import com.ketotracker.model.PendingImport
 import com.ketotracker.ui.components.KText
 import com.ketotracker.ui.theme.KetoTheme
+import com.ketotracker.work.ReminderScheduler
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -216,7 +217,7 @@ private fun SettingsMainPage(
             NavRow(
                 icon = "🔔",
                 label = "Notifications",
-                sub = if (vm.notificationsEnabled) "On — ${hourLabel(vm.notificationHour)}" else "Off",
+                sub = if (vm.notificationsEnabled) "On — ${timeLabel(vm.notificationHour, vm.notificationMinute)}" else "Off",
             ) { onNavigate(SettingsPage.NOTIFICATIONS) }
             NavRow(
                 icon = "🎨",
@@ -628,6 +629,10 @@ private fun SettingsSupplementsPage(vm: AppViewModel, onBack: () -> Unit) {
 private fun SettingsNotificationsPage(vm: AppViewModel, onBack: () -> Unit) {
     val c = KetoTheme.colors
     val context = LocalContext.current
+    var showTimePicker by remember { mutableStateOf(false) }
+    // Re-evaluated whenever the page recomposes (e.g. returning from the system
+    // "Alarms & reminders" screen) since AlarmManager exposes no observable flow for it.
+    val canScheduleExact = ReminderScheduler.canScheduleExactAlarms(context)
 
     // Android 13+ requires explicit POST_NOTIFICATIONS permission at runtime.
     // On older versions the system grants it automatically, so we skip the request.
@@ -695,6 +700,8 @@ private fun SettingsNotificationsPage(vm: AppViewModel, onBack: () -> Unit) {
 
             // ── Time selector (only shown when enabled) ───────────────────────
             if (vm.notificationsEnabled) {
+                val isPreset = (vm.notificationHour == 8 || vm.notificationHour == 14 || vm.notificationHour == 20) &&
+                    vm.notificationMinute == 0
                 SettingsSection("Reminder Time") {
                     KText(
                         "Choose when you'd like to be nudged each day.",
@@ -705,37 +712,126 @@ private fun SettingsNotificationsPage(vm: AppViewModel, onBack: () -> Unit) {
                             icon = "🌅",
                             label = "Morning",
                             sub = "8:00 AM",
-                            selected = vm.notificationHour == 8,
-                        ) { vm.setNotificationHour(context, 8) }
+                            selected = vm.notificationHour == 8 && vm.notificationMinute == 0,
+                        ) { vm.setNotificationTime(context, 8, 0) }
                         TimePreset(
                             icon = "☀️",
                             label = "Afternoon",
                             sub = "2:00 PM",
-                            selected = vm.notificationHour == 14,
-                        ) { vm.setNotificationHour(context, 14) }
+                            selected = vm.notificationHour == 14 && vm.notificationMinute == 0,
+                        ) { vm.setNotificationTime(context, 14, 0) }
                         TimePreset(
                             icon = "🌙",
                             label = "Evening",
                             sub = "8:00 PM",
-                            selected = vm.notificationHour == 20,
-                        ) { vm.setNotificationHour(context, 20) }
+                            selected = vm.notificationHour == 20 && vm.notificationMinute == 0,
+                        ) { vm.setNotificationTime(context, 20, 0) }
+                        TimePreset(
+                            icon = "⏰",
+                            label = "Custom",
+                            sub = if (isPreset) "Pick any time" else timeLabel(vm.notificationHour, vm.notificationMinute),
+                            selected = !isPreset,
+                        ) { showTimePicker = true }
+                    }
+                }
+
+                // ── Precise timing (only relevant on Android 12+) ──────────────
+                if (!canScheduleExact) {
+                    SettingsSection("Precise Timing") {
+                        InfoBanner(
+                            "Without \"Alarms & reminders\" access, the reminder may fire a little late under battery optimization. Grant it for on-the-dot delivery.",
+                        )
+                        SettingsButton("⏱️ Enable Precise Timing", subtitle = "Opens system settings") {
+                            ReminderScheduler.requestExactAlarmPermission(context)
+                        }
                     }
                 }
 
                 // ── Notification preview card ─────────────────────────────────
                 SettingsSection("Preview") {
-                    NotificationPreviewCard(vm.notificationHour)
+                    NotificationPreviewCard(vm.notificationHour, vm.notificationMinute)
                 }
             }
 
             Spacer(Modifier.height(24.dp))
         }
     }
+
+    if (showTimePicker) {
+        ReminderTimePickerDialog(
+            initialHour = vm.notificationHour,
+            initialMinute = vm.notificationMinute,
+            onConfirm = { hour, minute ->
+                vm.setNotificationTime(context, hour, minute)
+                showTimePicker = false
+            },
+            onCancel = { showTimePicker = false },
+        )
+    }
+}
+
+/** Custom hour/minute picker for the reminder time — wraps M3's `TimePicker` in the app's own styled `Dialog` (CLAUDE.md: no Material3 `AlertDialog`). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ReminderTimePickerDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    onConfirm: (hour: Int, minute: Int) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val c = KetoTheme.colors
+    val state = androidx.compose.material3.rememberTimePickerState(
+        initialHour = initialHour,
+        initialMinute = initialMinute,
+        is24Hour = false,
+    )
+    Dialog(onDismissRequest = onCancel) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(c.surf)
+                .border(1.dp, c.bdI, RoundedCornerShape(18.dp))
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            KText("⏰ Custom Reminder Time", size = 17, color = c.gold, weight = FontWeight.Bold)
+            androidx.compose.material3.TimePicker(state = state)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, c.bd, RoundedCornerShape(12.dp))
+                        .clickable { onCancel() }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    KText("Cancel", size = 14, color = c.txtM, weight = FontWeight.SemiBold)
+                }
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(c.accent)
+                        .clickable { onConfirm(state.hour, state.minute) }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    KText("Set", size = 14, color = Color.White, weight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
 }
 
 /** Visual mock of how the notification will appear in the notification shade. */
 @Composable
-private fun NotificationPreviewCard(hour: Int) {
+private fun NotificationPreviewCard(hour: Int, minute: Int) {
     val c = KetoTheme.colors
     val previewBody = when {
         hour <= 10 -> "Almost there — just log tonight's dinner to wrap up the day 🍽️"
@@ -770,7 +866,7 @@ private fun NotificationPreviewCard(hour: Int) {
                 )
                 KText("KETO TRACKER", size = 10, color = c.txtM, weight = FontWeight.Bold, letterSpacing = 0.8f)
             }
-            KText(hourLabel(hour), size = 10, color = c.txtD)
+            KText(timeLabel(hour, minute), size = 10, color = c.txtD)
         }
         // Notification body
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1278,9 +1374,13 @@ private fun StorageBar(stats: StorageStats?) {
 private fun formatKB(kb: Int): String =
     if (kb >= 1024) "%.1f MB".format(kb / 1024f) else "$kb KB"
 
-private fun hourLabel(hour: Int): String = when (hour) {
-    8 -> "Morning (8 AM)"
-    14 -> "Afternoon (2 PM)"
-    20 -> "Evening (8 PM)"
-    else -> "%02d:00".format(hour)
+private fun timeLabel(hour: Int, minute: Int): String = when {
+    hour == 8 && minute == 0 -> "Morning (8:00 AM)"
+    hour == 14 && minute == 0 -> "Afternoon (2:00 PM)"
+    hour == 20 && minute == 0 -> "Evening (8:00 PM)"
+    else -> {
+        val period = if (hour < 12) "AM" else "PM"
+        val displayHour = when (val h = hour % 12) { 0 -> 12; else -> h }
+        "%d:%02d %s".format(displayHour, minute, period)
+    }
 }

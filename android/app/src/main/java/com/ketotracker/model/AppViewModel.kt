@@ -41,7 +41,7 @@ import com.ketotracker.data.repository.DayRepository
 import com.ketotracker.data.repository.FakeDayRepository
 import com.ketotracker.data.repository.IDayRepository
 import com.ketotracker.work.BackupWorker
-import com.ketotracker.work.ReminderWorker
+import com.ketotracker.work.ReminderScheduler
 import java.io.File
 import java.time.LocalTime
 
@@ -140,6 +140,8 @@ class AppViewModel(
         private set
     var notificationHour by mutableStateOf(20)
         private set
+    var notificationMinute by mutableStateOf(0)
+        private set
 
     init {
         // Observe the persisted theme preferences.
@@ -159,6 +161,7 @@ class AppViewModel(
             viewModelScope.launch { prefs.backupFrequency.collect { freq -> backupFrequency = freq } }
             viewModelScope.launch { prefs.notificationsEnabled.collect { on -> notificationsEnabled = on } }
             viewModelScope.launch { prefs.notificationHour.collect { h -> notificationHour = h } }
+            viewModelScope.launch { prefs.notificationMinute.collect { m -> notificationMinute = m } }
         }
 
         // Load the full log ONCE. allEntries is then a plain in-memory cache
@@ -720,8 +723,9 @@ class AppViewModel(
     /**
      * Enables or disables the daily reminder. When enabling, creates the
      * notification channel (safe to call repeatedly — Android no-ops it) and
-     * schedules the WorkManager reminder. Caller must have already obtained
-     * POST_NOTIFICATIONS permission on Android 13+ before calling with true.
+     * arms the exact-alarm reminder (see [ReminderScheduler]). Caller must
+     * have already obtained POST_NOTIFICATIONS permission on Android 13+
+     * before calling with true.
      */
     fun setNotificationsEnabled(context: Context, enabled: Boolean) {
         notificationsEnabled = enabled
@@ -729,19 +733,21 @@ class AppViewModel(
             runCatching { prefs?.setNotificationsEnabled(enabled) }
             if (enabled) {
                 NotificationHelper.createChannel(context)
-                ReminderWorker.schedule(context, notificationHour)
+                ReminderScheduler.schedule(context, notificationHour, notificationMinute)
             } else {
-                ReminderWorker.cancel(context)
+                ReminderScheduler.cancel(context)
             }
         }
     }
 
-    /** Changes the reminder hour, rescheduling the worker if notifications are on. */
-    fun setNotificationHour(context: Context, hour: Int) {
+    /** Changes the reminder time, rescheduling the alarm if notifications are on. */
+    fun setNotificationTime(context: Context, hour: Int, minute: Int) {
         notificationHour = hour
+        notificationMinute = minute
         viewModelScope.launch {
             runCatching { prefs?.setNotificationHour(hour) }
-            if (notificationsEnabled) ReminderWorker.schedule(context, hour)
+            runCatching { prefs?.setNotificationMinute(minute) }
+            if (notificationsEnabled) ReminderScheduler.schedule(context, hour, minute)
         }
     }
 

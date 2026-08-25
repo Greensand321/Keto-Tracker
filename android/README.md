@@ -33,7 +33,7 @@ app/src/main/java/com/ketotracker/
 │   ├── notifications/           # Reminder notification channel + builder
 │   └── io/                      # Export/import, snapshot store, storage stats
 ├── model/AppViewModel.kt        # Single ViewModel driving the whole app
-├── work/                        # WorkManager: periodic backup + daily reminder
+├── work/                        # WorkManager periodic backup + AlarmManager daily reminder (exact alarm + boot receiver)
 └── ui/
     ├── theme/                   # KetoColors, KETO_THEMES (14 themes), KetoTracker() root
     ├── components/              # Cards, header, buttons, step bodies, summary, calendar, photos, theme panel
@@ -76,7 +76,7 @@ Key design choices:
 | Local persistence (Room + DataStore) | ✅ | JSON-column table; prefs via DataStore |
 | Photos (capture, compress, store, view) | ✅ | `PhotoStore`, `MealPhotoArea`, `PhotoViewer` |
 | Export / Import (JSON; merge/overwrite/skip) | ✅ | `DataPortability` (SAF) + `ImportConfirmDialog` |
-| Periodic backup + reminder notification | ✅ | `BackupWorker`, `ReminderWorker` |
+| Periodic backup + reminder notification | ✅ | `BackupWorker` (WorkManager), `ReminderScheduler`/`ReminderReceiver` (exact `AlarmManager` alarm) |
 | Storage usage stats | ✅ | `StorageUsage.compute()` + `StorageBar` |
 | Snackbar feedback | ✅ | `AppViewModel.messages` → `SnackbarHost` |
 | Snapshots (named in-app backups) | ⬜ | Disabled placeholder in Settings; IO scaffolding present |

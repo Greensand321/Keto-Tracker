@@ -145,6 +145,15 @@ class PrefsStore(context: Context) {
         ds.edit { prefs -> prefs[NOTIF_HOUR_KEY] = hour }
     }
 
+    /** Minute of the hour (0–59) for the daily reminder. Default 0. */
+    val notificationMinute: Flow<Int> = ds.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> prefs[NOTIF_MINUTE_KEY] ?: 0 }
+
+    suspend fun setNotificationMinute(minute: Int) {
+        ds.edit { prefs -> prefs[NOTIF_MINUTE_KEY] = minute }
+    }
+
     // ── Supplement items ──────────────────────────────────────────────────────
 
     /**
@@ -180,5 +189,6 @@ class PrefsStore(context: Context) {
         private val BACKUP_FREQ_KEY       = stringPreferencesKey("backup_frequency")
         private val NOTIF_ENABLED_KEY     = booleanPreferencesKey("notif_enabled")
         private val NOTIF_HOUR_KEY        = intPreferencesKey("notif_hour")
+        private val NOTIF_MINUTE_KEY      = intPreferencesKey("notif_minute")
     }
 }

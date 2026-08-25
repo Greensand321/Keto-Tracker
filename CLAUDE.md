@@ -61,7 +61,9 @@ android/app/src/main/java/com/ketotracker/
 │   └── AppViewModel.kt          # Single ViewModel for the whole app (see "Application State")
 ├── work/
 │   ├── BackupWorker.kt          # WorkManager: periodic JSON backup to getExternalFilesDir("backups")
-│   └── ReminderWorker.kt        # WorkManager: daily reminder notification
+│   ├── ReminderScheduler.kt     # AlarmManager: exact-alarm scheduling for the daily reminder
+│   ├── ReminderReceiver.kt      # BroadcastReceiver: posts the reminder, re-arms the next alarm
+│   └── BootReceiver.kt          # BroadcastReceiver: re-arms the reminder alarm after reboot
 └── ui/
     ├── theme/
     │   ├── KetoTheme.kt         # KetoColors palette, KETO_THEMES (14 themes), THEME_LIST, KetoTracker() root
@@ -318,11 +320,26 @@ the Storage Access Framework pickers and one confirmation dialog.
 
 - **`work/BackupWorker.kt`** — WorkManager periodic job; writes a JSON backup to
   `getExternalFilesDir("backups")` (internal storage fallback), keeping the last 7 files.
-- **`work/ReminderWorker.kt`** — WorkManager daily job; posts a reminder notification.
+- **`work/ReminderScheduler.kt`** — schedules the daily reminder via
+  `AlarmManager.setExactAndAllowWhileIdle` (falling back to `setAndAllowWhileIdle` if the
+  `SCHEDULE_EXACT_ALARM` permission hasn't been granted on Android 12+), rather than a
+  WorkManager `PeriodicWorkRequest` — periodic work is deliberately inexact and can drift by
+  hours under Doze/battery optimization, which made the reminder feel random. Also exposes
+  `canScheduleExactAlarms()` / `requestExactAlarmPermission()`, surfaced in the Notifications
+  settings page.
+- **`work/ReminderReceiver.kt`** — the `BroadcastReceiver` the alarm fires into; posts the
+  reminder (same meal-completeness suppression logic as before) and always re-arms the next
+  day's alarm before finishing, since exact alarms are one-shot.
+- **`work/BootReceiver.kt`** — re-arms the reminder alarm after a device reboot, since exact
+  `AlarmManager` alarms (unlike WorkManager jobs) don't survive one.
 - **`data/notifications/NotificationHelper.kt`** — builds the notification channel + the
   reminder notification (gold icon tint via `R.color.keto_gold`).
-- **Permissions**: only `POST_NOTIFICATIONS` (Android 13+), requested at runtime from the
-  Notifications settings row. No camera or storage permission is needed.
+- **`data/prefs/PrefsStore.kt`** — persists `notificationHour` *and* `notificationMinute` (the
+  Notifications settings page has a full custom time picker, not just the three quick presets).
+- **Permissions**: `POST_NOTIFICATIONS` (Android 13+, requested at runtime from the
+  Notifications settings row), `SCHEDULE_EXACT_ALARM` (Android 12+, a user-grantable special
+  permission — the settings page shows a banner + button to grant it when missing), and
+  `RECEIVE_BOOT_COMPLETED`. No camera or storage permission is needed.
 
 ---
 
