@@ -74,7 +74,7 @@ fun SummaryCard(
                 .joinToString(", ") { "${it.key} × ${it.value}" }.ifEmpty { null },
             5,
         ),
-        SumRow("📝", "Notes", e.notes.ifEmpty { null }, 6),
+        SumRow("📝", "Notes", e.notes.ifEmpty { null }, 5),
     )
 
     KetoCard {

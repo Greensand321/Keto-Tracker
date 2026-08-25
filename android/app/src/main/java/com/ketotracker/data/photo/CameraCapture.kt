@@ -33,5 +33,6 @@ fun clearStaleCaptures(context: Context) {
     capturesDir(context).listFiles()?.forEach { it.delete() }
 }
 
-private fun capturesDir(context: Context): File =
+/** Shared temp-file directory for both camera captures and [importUriToTempFile] copies — [clearStaleCaptures] sweeps both. */
+internal fun capturesDir(context: Context): File =
     File(context.cacheDir, "captures").apply { mkdirs() }

@@ -1,8 +1,10 @@
 package com.ketotracker.data
 
 /**
- * The 8-step wizard, mirroring the STEPS / META constants in index.html:
- *   breakfast, lunch, dinner, ratings, heart, flags, notes, summary
+ * The 7-step wizard, mirroring the STEPS / META constants in index.html —
+ * except FLAGS also carries the web app's standalone "notes" step, combined
+ * onto one page so finishing the day takes one fewer Next tap:
+ *   breakfast, lunch, dinner, ratings, heart, flags+notes, summary
  */
 enum class Step(
     val id: String,
@@ -16,13 +18,11 @@ enum class Step(
     DINNER("dinner", "🍽️", "Meal 3 of 3", "Dinner", "What did you eat for dinner?"),
     RATINGS("ratings", "📊", "Daily Check-in", "Daily Ratings", "Rate your energy, mood, and portions."),
     HEART("heart", "💗", "Health Check", "Heart Health", "How did your heart feel today?"),
-    FLAGS("flags", "🚩", "Daily Flags", "Flags", "Anything important to note?"),
-    NOTES("notes", "📝", "Optional", "Notes", "Anything else on your mind?"),
+    FLAGS("flags", "🚩", "Daily Flags", "Flags & Notes", "Anything else to log before you finish?"),
     SUMMARY("summary", "✅", "Done!", "Day Summary", ""),
     ;
 
     val isMeal: Boolean get() = this == BREAKFAST || this == LUNCH || this == DINNER
-    val isText: Boolean get() = isMeal || this == NOTES
 
     val meal: Meal?
         get() = when (this) {

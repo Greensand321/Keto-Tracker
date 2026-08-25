@@ -10,5 +10,6 @@ interface IDayRepository {
     /** Bulk upsert — used by Import (and, eventually, Snapshot restore) to write many days in one go. */
     suspend fun saveAll(entries: List<DayEntry>)
 
+    suspend fun delete(key: String)
     suspend fun deleteAll()
 }
