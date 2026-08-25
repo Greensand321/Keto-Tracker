@@ -71,6 +71,7 @@ import com.ketotracker.data.SnapshotMeta
 import com.ketotracker.data.SupplementDose
 import com.ketotracker.data.SupplementSchedule
 import com.ketotracker.data.io.StorageStats
+import com.ketotracker.data.notifications.ReminderMessages
 import com.ketotracker.model.AppViewModel
 import com.ketotracker.model.ImportMode
 import com.ketotracker.model.PendingImport
@@ -1281,10 +1282,14 @@ private fun ReminderTimePickerDialog(
 @Composable
 private fun NotificationPreviewCard(hour: Int, minute: Int) {
     val c = KetoTheme.colors
-    val previewBody = when {
-        hour <= 10 -> "Almost there — just log tonight's dinner to wrap up the day 🍽️"
-        hour <= 15 -> "Don't forget lunch! A quick entry keeps your log complete 🥗"
-        else       -> "Open Keto Tracker to log today's meals and keep your streak going 💪"
+    // Re-drawn only when the hour changes (not on every recomposition) so the preview
+    // doesn't visibly jitter between random variants while the rest of the page redraws.
+    val previewBody = remember(hour) {
+        when {
+            hour <= 10 -> ReminderMessages.forDinnerMissing()
+            hour <= 15 -> ReminderMessages.forLunchMissing()
+            else       -> ReminderMessages.forNothingLogged()
+        }
     }
     Column(
         Modifier
