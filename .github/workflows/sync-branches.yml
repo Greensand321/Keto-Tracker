@@ -269,7 +269,15 @@ jobs:
         if: always()
         run: |
           mkdir -p /tmp/status
-          cat > /tmp/status/result.json <<EOF
+          # Named per matrix job, not `result.json`. The summarize job pulls
+          # every one of these artifacts with `merge-multiple: true`, which
+          # flattens them into a single directory — so a shared filename meant
+          # N parallel downloads racing to write one path. That silently kept
+          # only the last row (every report was missing every other branch),
+          # and when two payloads differed in length the loser's tail survived
+          # the winner's write: a stray `}` on line 2, jq parse error, the
+          # whole job dead with exit 5 while the sync itself had worked fine.
+          cat > "/tmp/status/result-${{ strategy.job-index }}.json" <<EOF
           {"branch": "${{ matrix.branch }}", "status": "${{ steps.merge.outputs.status }}", "pushed": "${{ steps.merge.outputs.status == 'success' && github.event.inputs.dry_run == 'false' }}"}
           EOF
 
@@ -278,7 +286,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sync-status-${{ strategy.job-index }}
-          path: /tmp/status/result.json
+          path: /tmp/status/result-${{ strategy.job-index }}.json
           retention-days: 1
 
   summarize:
@@ -313,7 +321,11 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          if [ "$MERGE_RAN" == "success" ] && [ -n "$MERGE_RESULTS" ]; then
+          # `type == "array"` as well as non-empty: a report must never be the
+          # thing that fails the run, so anything unexpected here is skipped
+          # rather than fed to jq to die on.
+          if [ "$MERGE_RAN" == "success" ] && [ -n "$MERGE_RESULTS" ] \
+             && jq -e 'type == "array"' >/dev/null 2>&1 <<< "$MERGE_RESULTS"; then
             {
               echo "## ⬆️ Branches merged into main first"
               echo ""
@@ -352,9 +364,15 @@ jobs:
           if [ -d /tmp/all-status ]; then
             for f in /tmp/all-status/*.json; do
               [ -e "$f" ] || continue
-              BRANCH=$(jq -r .branch "$f")
-              STATUS=$(jq -r .status "$f")
-              PUSHED=$(jq -r .pushed "$f")
+              # One jq per file instead of three, and a readable row instead of
+              # a dead job when a file is unparseable: the sync has already
+              # happened by the time this runs, so losing the report is a far
+              # better outcome than losing the run.
+              if ! ROW=$(jq -r '[.branch // "?", .status // "?", .pushed // "?"] | @tsv' "$f" 2>/dev/null); then
+                echo "| \`$(basename "$f")\` | ❓ unreadable status file | — |" >> "$GITHUB_STEP_SUMMARY"
+                continue
+              fi
+              IFS=$'\t' read -r BRANCH STATUS PUSHED <<< "$ROW"
               ICON="✅"
               case "$STATUS" in
                 conflict)   ICON="⚠️"; CONFLICTS="${CONFLICTS} \`${BRANCH}\`" ;;
