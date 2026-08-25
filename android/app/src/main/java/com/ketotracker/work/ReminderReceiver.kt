@@ -32,7 +32,7 @@ class ReminderReceiver : BroadcastReceiver() {
             try {
                 val prefs = PrefsStore(appContext)
                 if (prefs.notificationsEnabled.first()) {
-                    maybeShowReminder(appContext)
+                    maybeShowReminder(appContext, prefs)
                     // Re-read the current hour/minute in case they changed since this
                     // alarm was armed, then re-arm for the next occurrence.
                     val nextHour = prefs.notificationHour.first()
@@ -45,7 +45,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
-    private suspend fun maybeShowReminder(context: Context) {
+    private suspend fun maybeShowReminder(context: Context, prefs: PrefsStore) {
         val repo = DayRepository(KetoDatabase.get(context).dayEntryDao())
         val entry = repo.load(DateUtils.todayKey())
 
@@ -57,13 +57,17 @@ class ReminderReceiver : BroadcastReceiver() {
         // so we never congratulate-nag someone who is already done for the day.
         if (breakfastDone && lunchDone && dinnerDone) return
 
+        // Excluding anything shown in roughly the last week keeps a line from
+        // coincidentally repeating even though the draw within each pool is random.
+        val recentlyShown = prefs.recentReminderMessages.first()
         val body = when {
-            !breakfastDone && !lunchDone && !dinnerDone -> ReminderMessages.forNothingLogged()
-            !dinnerDone -> ReminderMessages.forDinnerMissing()
-            !lunchDone -> ReminderMessages.forLunchMissing()
-            else -> ReminderMessages.forBreakfastMissing()
+            !breakfastDone && !lunchDone && !dinnerDone -> ReminderMessages.forNothingLogged(recentlyShown)
+            !dinnerDone -> ReminderMessages.forDinnerMissing(recentlyShown)
+            !lunchDone -> ReminderMessages.forLunchMissing(recentlyShown)
+            else -> ReminderMessages.forBreakfastMissing(recentlyShown)
         }
 
         NotificationHelper.showReminder(context, body)
+        prefs.setRecentReminderMessages((recentlyShown + body).takeLast(ReminderMessages.RECENT_HISTORY_SIZE))
     }
 }

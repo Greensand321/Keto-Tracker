@@ -155,6 +155,27 @@ class PrefsStore(context: Context) {
         ds.edit { prefs -> prefs[NOTIF_MINUTE_KEY] = minute }
     }
 
+    /**
+     * Bodies of the most-recently-shown reminder notifications (oldest first, capped at
+     * [com.ketotracker.data.notifications.ReminderMessages.RECENT_HISTORY_SIZE] by the
+     * caller) — lets `ReminderReceiver` avoid repeating a line shown earlier in the
+     * current rolling window ("no repeats from the current week").
+     */
+    val recentReminderMessages: Flow<List<String>> = ds.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
+            val s = prefs[RECENT_REMINDER_MESSAGES_KEY] ?: return@map emptyList()
+            runCatching {
+                prefsJson.decodeFromString(ListSerializer(String.serializer()), s)
+            }.getOrElse { emptyList() }
+        }
+
+    suspend fun setRecentReminderMessages(messages: List<String>) {
+        ds.edit { prefs ->
+            prefs[RECENT_REMINDER_MESSAGES_KEY] = prefsJson.encodeToString(ListSerializer(String.serializer()), messages)
+        }
+    }
+
     // ── Supplement schedules ─────────────────────────────────────────────────
 
     /** Named, repeating supplement rotations the user has created or imported. */
@@ -222,5 +243,6 @@ class PrefsStore(context: Context) {
         private val NOTIF_ENABLED_KEY     = booleanPreferencesKey("notif_enabled")
         private val NOTIF_HOUR_KEY        = intPreferencesKey("notif_hour")
         private val NOTIF_MINUTE_KEY      = intPreferencesKey("notif_minute")
+        private val RECENT_REMINDER_MESSAGES_KEY = stringPreferencesKey("recent_reminder_messages")
     }
 }

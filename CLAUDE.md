@@ -55,7 +55,7 @@ android/app/src/main/java/com/ketotracker/
 │   │   └── DeviceGalleryQuery.kt#   MediaStore query for device photos taken on a given date
 │   ├── notifications/
 │   │   ├── NotificationHelper.kt#   reminder notification channel + builder
-│   │   └── ReminderMessages.kt  #   pooled, randomized reminder body copy (per missing-meal state)
+│   │   └── ReminderMessages.kt  #   100 pooled reminder messages (per missing-meal state) + no-repeat-this-week logic
 │   └── io/
 │       ├── DataPortability.kt   #   JSON encode/decode/merge for export & import
 │       ├── SnapshotStore.kt     #   snapshot persistence helper
@@ -397,10 +397,14 @@ the Storage Access Framework pickers and one confirmation dialog.
 - **`data/notifications/NotificationHelper.kt`** — builds the notification channel + the
   reminder notification (gold icon tint via `R.color.keto_gold`).
 - **`data/notifications/ReminderMessages.kt`** — the reminder body text. Stays context-aware
-  (which meal(s) are still missing decides the pool) but each state has ~7-8 motivational
-  variants instead of one fixed line, picked with `.random()` each time the alarm fires, so
-  the daily nudge doesn't read identically forever. `SettingsSheet`'s notification preview
-  card draws from the same pools (`remember`ed per hour so it doesn't jitter on recomposition).
+  (which meal(s) are still missing decides the pool) with 25 motivational variants per state
+  (100 total) instead of one fixed line, so the daily nudge doesn't repeat for months.
+  `ReminderReceiver` also excludes anything shown in the last `RECENT_HISTORY_SIZE` (7) fires —
+  persisted as `PrefsStore.recentReminderMessages` — so a line can't coincidentally repeat
+  within the current rolling week even though the draw within each pool is random.
+  `SettingsSheet`'s notification preview card draws from the same pools with no history
+  (`remember`ed per hour so it doesn't jitter on recomposition) since it's illustrative only,
+  not a real fire — it doesn't read or write the recency history.
 - **`data/prefs/PrefsStore.kt`** — persists `notificationHour` *and* `notificationMinute` (the
   Notifications settings page has a full custom time picker, not just the three quick presets).
 - **Permissions**: `POST_NOTIFICATIONS` (Android 13+, requested at runtime from the
