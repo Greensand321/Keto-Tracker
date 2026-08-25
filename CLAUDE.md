@@ -1,492 +1,422 @@
 # Keto Tracker — CLAUDE.md
 
-A comprehensive guide to the codebase for AI assistants and developers working on this project.
+A guide to the codebase for AI assistants and developers working on this project.
 
 ---
 
 ## Project Overview
 
-Keto Tracker is a **zero-dependency, single-file Progressive Web App (PWA)** for personal keto diet logging. It runs entirely in the browser with no build step, no server, and no external libraries. All data is stored locally on the device.
+Keto Tracker is a **native Android** app for personal keto diet logging, built in
+**Kotlin + Jetpack Compose**. It runs fully offline, stores all data locally on the
+device (no account, no server, no sync), and is designed around one principle:
 
-**Goal**: Minimise friction when logging daily meals, energy levels, mood, and ketone test results.
+> **Record everything with the fewest clicks possible.**
 
-**Tech stack**: Vanilla HTML/CSS/JS, localStorage, IndexedDB, Service Worker.
+Every interaction is tuned to remove friction — time-aware starting step, auto-advancing
+ratings, one-tap quick-select chips, instant auto-save, inline editing, and swipe
+navigation — so a complete day can be logged in well under a minute.
+
+**Tech stack**: Kotlin, Jetpack Compose (Material 3), Room, DataStore Preferences,
+kotlinx.serialization, Coil, WorkManager.
+
+The app module lives in `android/`. The root `README.md` is the user-facing feature
+overview; `android/README.md` carries module-level build/architecture notes.
 
 ---
 
 ## File Structure
 
 ```
-Keto-Tracker/
-├── index.html        # The entire app — HTML, CSS, and JS in one file (~1,031 lines)
-├── sw.js             # Service Worker for offline caching (43 lines)
-├── manifest.json     # PWA manifest (icons, display settings, theme colour)
-├── icons/            # PWA icons in 11 sizes (72px → 512px)
-│   ├── icon-72.png
-│   ├── icon-96.png
-│   ├── icon-128.png
-│   ├── icon-144.png
-│   ├── icon-152.png
-│   ├── icon-167.png   # iPad Pro home screen
-│   ├── icon-180.png   # iPhone home screen
-│   ├── icon-192.png   # Android standard (also cached by SW)
-│   ├── icon-384.png
-│   ├── icon-512.png   # Splash screens (SW cached)
-│   └── icon-512-maskable.png  # Adaptive Android icon (SW cached)
-├── README.md         # User-facing feature overview
-└── CLAUDE.md         # This file
+android/app/src/main/java/com/ketotracker/
+├── MainActivity.kt              # Single activity; hosts the Compose tree, resolves auto-theme
+├── data/
+│   ├── DayEntry.kt              # Core data model (one day's log)
+│   ├── DayEntrySurrogate.kt     # @Serializable surrogate + DayEntry ⇄ JSON mapping
+│   ├── Heart.kt                 # Heart enum (GOOD/MILD/BAD) + manual KSerializer
+│   ├── Meal.kt                  # Meal enum (BREAKFAST/LUNCH/DINNER)
+│   ├── Steps.kt                 # Step enum (7-step wizard) + label/placeholder/supplement constants
+│   ├── Snapshot.kt              # Snapshot metadata model (feature partially built)
+│   ├── DateUtils.kt             # ISO date-key helpers (todayKey, offKey, fmtDate, isToday/isFuture, monthGrid)
+│   ├── db/                      # Room
+│   │   ├── DayEntryEntity.kt    #   @Entity: (date TEXT PK, data TEXT) — JSON column
+│   │   ├── DayEntryDao.kt       #   @Dao: upsert / saveAll / get / observeAll (Flow) / deleteAll
+│   │   └── KetoDatabase.kt      #   @Database singleton (KETO_DB_NAME = "keto_tracker.db")
+│   ├── repository/
+│   │   ├── IDayRepository.kt    #   interface: suspend load/save/saveAll/deleteAll + Flow<List<DayEntry>>
+│   │   ├── DayRepository.kt     #   Room-backed impl; encodes/decodes DayEntry ⇄ JSON
+│   │   └── FakeDayRepository.kt #   in-memory impl (seeded demo data) for Compose Previews
+│   ├── prefs/
+│   │   └── PrefsStore.kt        #   DataStore<Preferences> — theme id + auto-theme prefs
+│   ├── photo/
+│   │   ├── PhotoStore.kt        #   on-disk compressed JPEGs in filesDir/photos/
+│   │   ├── CameraCapture.kt     #   FileProvider capture target + stale-capture cleanup
+│   │   ├── PhotoImport.kt       #   copies a picked/device-gallery Uri into a temp file for PhotoStore
+│   │   └── DeviceGalleryQuery.kt#   MediaStore query for device photos taken on a given date
+│   ├── notifications/
+│   │   └── NotificationHelper.kt#   reminder notification channel + builder
+│   └── io/
+│       ├── DataPortability.kt   #   JSON encode/decode/merge for export & import
+│       ├── SnapshotStore.kt     #   snapshot persistence helper
+│       ├── ZipPortability.kt    #   zip bundling helper
+│       └── StorageStats.kt      #   StorageUsage.compute() — DB file + photo dir sizing
+├── model/
+│   └── AppViewModel.kt          # Single ViewModel for the whole app (see "Application State")
+├── work/
+│   ├── BackupWorker.kt          # WorkManager: periodic JSON backup to getExternalFilesDir("backups")
+│   ├── ReminderScheduler.kt     # AlarmManager: exact-alarm scheduling for the daily reminder
+│   ├── ReminderReceiver.kt      # BroadcastReceiver: posts the reminder, re-arms the next alarm
+│   └── BootReceiver.kt          # BroadcastReceiver: re-arms the reminder alarm after reboot
+└── ui/
+    ├── theme/
+    │   ├── KetoTheme.kt         # KetoColors palette, KETO_THEMES (14 themes), THEME_LIST, KetoTracker() root
+    │   └── Type.kt              # KetoTypography
+    └── components/ + screens/   # Compose UI (see "UI Layer")
 ```
 
-> **Important**: There is no build system, no `package.json`, no node_modules. Open `index.html` directly in a browser — that's the entire app.
+Other notable paths:
+- `android/app/src/main/AndroidManifest.xml` — permissions (`POST_NOTIFICATIONS`), camera
+  `<queries>`, FileProvider, launcher activity, `Theme.KetoTracker` splash style.
+- `android/app/src/main/res/` — `strings.xml` (`app_name`), `themes.xml`, `colors.xml`
+  (`keto_bg`/`keto_gold`), launcher icons, `xml/file_paths.xml`, backup rules.
+- `android/app/src/test/java/com/ketotracker/` — JVM unit tests for the data layer
+  (`DateUtilsTest`, `DayRepositoryTest`).
+- `android/app/build.gradle.kts`, `android/build.gradle.kts`, `android/settings.gradle.kts`
+  — Gradle config.
 
 ---
 
 ## Architecture
 
-### Single-File Design
+The app follows a conventional **MVVM + Repository** structure on top of Compose. Data
+flows one direction — persistence → repository → ViewModel (Compose `State`) → UI — and
+user actions flow back: UI → ViewModel methods → repository (async) → persistence.
 
-Everything lives in `index.html`:
-1. `<head>` — PWA meta tags, iOS/Android icon links
-2. `<style>` — All CSS (CSS variables for theming, mobile-first layout)
-3. `<body>` — Minimal HTML skeleton; all UI is rendered dynamically by JS
-4. `<script>` — All application logic inline (no `<script src>`, no modules, no bundling)
+```
+Room / DataStore / PhotoStore  →  IDayRepository / PrefsStore  →  AppViewModel (State)  →  Compose UI
+                                                              ←  ViewModel methods  ←  user actions
+```
 
-### No External Dependencies
-
-- Zero npm packages
-- Zero CDN links
-- Zero network requests after initial load
-- The only "external" file loaded is `manifest.json` and the icon PNGs
+- **Single activity, no Navigation library.** `MainActivity` hosts the whole Compose
+  tree. `WizardScreen` holds an `Overlay` enum
+  (`NONE/THEME/OVERVIEW/CALENDAR/SUPPLEMENTS/QUICK_SELECT/SETTINGS`) and draws the active
+  overlay as a sibling `Box` on top of the wizard.
+- **Dependency injection by factory.** `AppViewModel` takes an `IDayRepository` and a
+  nullable `PrefsStore`, so it runs identically in production and in Compose Previews:
+  - `AppViewModel.factory(application)` — production: `KetoDatabase` → `DayRepository`
+    (Room) + `PrefsStore` (DataStore).
+  - `AppViewModel.preview()` — design-time: `FakeDayRepository` (in-memory, seeded) and
+    no `PrefsStore`, so every `@Preview` renders real-looking data without touching disk.
 
 ---
 
 ## Data Model
 
-### localStorage (primary data store)
+### `DayEntry` (one day's log) — `data/DayEntry.kt`
 
-All keys are prefixed to avoid collisions.
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `kt_d_YYYY-MM-DD` | JSON string | Daily log entry (one per day) |
-| `kt__snapshots` | JSON string | Array of up to 25 snapshots |
-| `kt_theme` | string | Active theme ID (e.g. `"midnight"`) |
-| `kt_theme_auto` | string | `"on"` or `"off"` for auto-theme mode |
-| `kt_theme_dark_auto` | string | Preferred dark theme when auto mode is on |
-| `kt_theme_light_auto` | string | Preferred light theme when auto mode is on |
-
-#### Daily Entry Schema (`kt_d_YYYY-MM-DD`)
-
-```json
-{
-  "date": "2025-01-15",
-  "breakfast": "2 eggs, bacon, avocado",
-  "lunch": "Grilled chicken salad",
-  "dinner": "Steak with broccoli",
-  "energy": 4,
-  "happiness": 5,
-  "portion": 3,
-  "notInKeto": false,
-  "tested": true,
-  "notes": "Had cravings at 3pm",
-  "breakfastKeto": true,
-  "lunchKeto": false,
-  "dinnerKeto": true
-}
+```kotlin
+data class DayEntry(
+    val date: String,                       // "YYYY-MM-DD" (primary key)
+    val breakfast: String = "",
+    val lunch: String = "",
+    val dinner: String = "",
+    val energy: Int? = null,                // 1–5 or null
+    val happiness: Int? = null,             // 1–5 or null
+    val portion: Int? = null,               // 1–5 or null
+    val notInKeto: Boolean = false,
+    val tested: Boolean = false,
+    val notes: String = "",
+    val breakfastKeto: Boolean = false,     // per-meal "Keto" stamp
+    val lunchKeto: Boolean = false,
+    val dinnerKeto: Boolean = false,
+    val breakfastTime: String? = null,      // timestamp set when meal stamped keto
+    val lunchTime: String? = null,
+    val dinnerTime: String? = null,
+    val heart: Heart? = null,               // GOOD / MILD / BAD
+    val heartNotes: String = "",
+    val supplements: Map<String, Int> = emptyMap(),
+)
 ```
 
-- Meal fields (`breakfast`, `lunch`, `dinner`, `notes`) are strings (empty string = not filled)
-- Rating fields (`energy`, `happiness`, `portion`) are integers 1–5, or `null` if not set
-- Flag fields (`notInKeto`, `tested`) are booleans
-- Keto meal flags (`breakfastKeto`, `lunchKeto`, `dinnerKeto`) are booleans (default `false`) — set to `true` when the user marks a meal as keto via the Keto button
+Helpers: `mealText(meal)` and `mealKeto(meal)` keep wizard code declarative.
+`Heart` is a plain enum with a hand-written `HeartSerializer` (the generated
+`@Serializable` companion breaks the Compose preview renderer).
 
-#### Snapshot Schema (`kt__snapshots`)
+### Persistence — Room with a JSON column (zero-migration design)
 
-```json
-[
-  {
-    "id": 1705286400000,
-    "name": "Pre-vacation backup",
-    "ts": 1705286400000,
-    "days": 45,
-    "data": {
-      "2024-11-01": { "breakfast": "...", "energy": 4, ... },
-      "2024-11-02": { ... }
-    }
-  }
-]
-```
-
-### IndexedDB (photo store)
-
-Meal photos are stored separately from localStorage to avoid hitting the ~5 MB quota.
-
-- **Database**: `keto-photos`
-- **Object store**: `photos`
-- **Key format**: `YYYY-MM-DD_breakfast`, `YYYY-MM-DD_lunch`, `YYYY-MM-DD_dinner`
-- **Value**: Compressed JPEG `Blob` (max 900px, 0.75 quality — compressed on device via canvas)
-
----
-
-## Application State
-
-The app uses plain global variables (no framework, no reactive state):
-
-| Variable | Description |
-|----------|-------------|
-| `vk` | Currently viewed date key (`YYYY-MM-DD`) |
-| `si` | Current wizard step index (0–8) |
-| `e` | Current day's entry object (the in-memory copy being edited) |
-
-State changes always follow this pattern:
-1. Mutate `e` (or `si`, `vk`)
-2. Call `save(vk, e)` to persist
-3. Call `render()` to re-render the UI
-
----
-
-## Wizard Steps
-
-The core UI is a 9-step daily logging wizard. Step index `si` controls which step is shown.
-
-| `si` | Field | Type | Label | Description |
-|------|-------|------|-------|-------------|
-| 0 | `breakfast` | text | Meal 1 of 3 | Free-text breakfast description |
-| 1 | `lunch` | text | Meal 2 of 3 | Free-text lunch description |
-| 2 | `dinner` | text | Meal 3 of 3 | Free-text dinner description |
-| 3 | `energy` | rating (1–5) | Daily Check-in | Energy level today |
-| 4 | `happiness` | rating (1–5) | Daily Check-in | Happiness level today |
-| 5 | `portion` | rating (1–5) | Daily Check-in | Portion size today |
-| 6 | flags | toggles | Daily Flags | "Not in Keto" and "Tested" ketone levels |
-| 7 | `notes` | text | Optional | Free-text notes |
-| 8 | summary | display | Done! | Read-only recap of the full day |
-
-### Wizard Behaviour Rules
-
-- **Text steps (0, 1, 2, 7)**: Can be skipped; no auto-advance
-- **Meal steps (0, 1, 2)**: Show three action buttons — Next, Keto, Skip. Keto marks the meal's keto flag `true` then advances exactly like Next
-- **Rating steps (3, 4, 5)**: Auto-advance to next step 380ms after selection
-- **Viewing a past day**: Always jumps directly to step 8 (summary, read-only)
-- **Summary for today**: Has inline "Edit" buttons that call `editAt(idx)` to jump back
-- **Photo area**: Rendered below the action buttons on meal steps so buttons remain visible when the keyboard is open
-
-### Smart Step Logic
-
-`smartStep()` uses the current hour to suggest the most relevant step when opening the app:
-- Before 10:00 → `breakfast` (step 0)
-- Before 14:00 → `lunch` (step 1)
-- Before 20:00 → `dinner` (step 2)
-- 20:00+ → `energy` (step 3)
-
-`defStep(entry)` then finds the first *incomplete* step at or after the smart step.
-
----
-
-## Key Functions
-
-### Initialisation & Rendering
-
-| Function | Description |
-|----------|-------------|
-| `init()` | App entry point. Loads today's data, determines starting step, renders UI, registers service worker |
-| `render()` | Updates header date display and re-renders the current wizard step |
-| `renderStep()` | Generates HTML for the current step based on `si` and `e`, inserts into DOM |
-| `renderSum(isToday, canEdit)` | Renders the summary card with all day fields and optional edit buttons |
-
-### Data Access
-
-| Function | Description |
-|----------|-------------|
-| `load(dateKey)` | Returns entry for a date from localStorage, or a blank default entry |
-| `save(dateKey, entry)` | Stringifies and writes entry to localStorage |
-| `lsGetDay(k)` | Raw localStorage get for a day key |
-| `lsSetDay(k, v)` | Raw localStorage set for a day key |
-| `lsAllDayKeys()` | Returns all stored date keys (sorted) |
-| `allKeys()` | Alias; all logged date keys |
-| `getStorageStats()` | Returns `{ usedKB, pct, days, snaps }` |
-
-### Wizard Interaction
-
-| Function | Description |
-|----------|-------------|
-| `upd(field, value)` | Update a field on the current entry and save |
-| `selRate(field, value)` | Select a 1–5 rating, save, auto-advance after 380ms |
-| `togFlag(field)` | Toggle a boolean flag (`notInKeto` or `tested`) |
-| `next()` | Advance to `si + 1` |
-| `back()` | Go to `si - 1` |
-| `skip()` | Skip current step (calls `next()`) |
-| `editAt(idx)` | Jump to a specific step index for editing |
-| `markKeto(meal)` | Sets `ent[meal+'Keto'] = true`, saves, then calls `next()` |
-
-### Day Navigation
-
-| Function | Description |
-|----------|-------------|
-| `goToday()` | Switch view to today, reload entry, determine smart step |
-| `chgDay(n)` | Move n days from current `vk` (negative = past, positive = future) |
-| `jumpTo(dateKey)` | Jump directly to a specific date |
-| `todayKey()` | Returns today as `YYYY-MM-DD` |
-| `offKey(dateKey, n)` | Returns date key offset by n days |
-| `fmtDate(dateKey)` | Formats `YYYY-MM-DD` → `"Mon, Jan 15"` |
-
-### Snapshots
-
-| Function | Description |
-|----------|-------------|
-| `saveSnapshot(name)` | Captures all current data into a named snapshot (max 25) |
-| `restoreSnapshot(id)` | Replaces all current data with snapshot (requires confirm) |
-| `deleteSnapshot(id)` | Removes snapshot by ID (requires confirm) |
-| `exportSnapshot(id)` | Downloads snapshot data as `.json` file |
-| `lsGetSnaps()` | Returns parsed snapshots array from localStorage |
-| `lsSetSnaps(arr)` | Writes snapshots array to localStorage |
-
-### Export / Import
-
-| Function | Description |
-|----------|-------------|
-| `exportAll()` | Downloads all day entries as `keto-all-data-YYYY-MM-DD.json` |
-| `handleImport(event)` | Reads uploaded `.json` file, validates, clears existing, imports entries |
-| `dlJSON(obj, filename)` | Utility: creates Blob, triggers browser download |
-
-### Theme System
-
-| Function | Description |
-|----------|-------------|
-| `applyTheme(id, persist=true)` | Sets `data-theme` attribute on `<html>`, updates theme-color meta, optionally saves to localStorage |
-| `applyAutoTheme()` | Applies the appropriate dark/light theme based on system `prefers-color-scheme` |
-| `toggleAutoTheme()` | Toggles auto-theme mode on/off |
-| `renderThemeGrid()` | Builds the theme picker grid HTML |
-| `toggleThemePanel()` | Shows/hides the floating theme picker panel |
-| `closeThemePanel()` | Closes panel and syncs theme state |
-
-### Photos
-
-| Function | Description |
-|----------|-------------|
-| `openPhDB()` | Opens the `keto-photos` IndexedDB (creates if new) |
-| `savePhotoBlob(date, meal, blob)` | Stores compressed JPEG blob |
-| `getPhotoBlob(date, meal)` | Retrieves blob (returns `null` if not found) |
-| `deletePhotoBlob(date, meal)` | Removes photo from IndexedDB |
-| `compressImage(file, maxPx, quality)` | Draws image on canvas, returns compressed JPEG Blob |
-| `openCamera(meal)` | Triggers file input with `capture="environment"` |
-| `handleCamera(event)` | Compresses selected image and saves it |
-| `loadMealPhoto(meal)` | Renders photo UI area for a meal step (add/view/delete) |
-| `openPhotoModal(meal)` | Shows fullscreen photo viewer |
-
-### Notifications
-
-| Function | Description |
-|----------|-------------|
-| `toast(message, isError=false)` | Shows a brief bottom notification (green default, red if error) |
-
----
-
-## UI Sections
-
-### Header (`.hdr`)
-- `‹` / `›` — Previous/Next day buttons (next disabled if on today)
-- Date button — shows current date, opens calendar picker
-- `📋` — Opens overview modal (all logged days)
-- `🎨` — Opens theme picker panel
-- `⚙️` — Opens settings modal
-
-### Wizard (`.main`)
-- **Dots** (`.dots`) — Progress indicator; filled = complete, ring = current, empty = future
-- **Card** (`.card`) — Active step content (changes each step)
-- **Action row** (`.actions`) — Back / Next / Skip buttons
-- **History chip strip** — A horizontal scrollable row of the last 20 logged days (plus today) shown below the wizard for quick date jumping; chips are colour-coded (red = off-keto day)
-
-### Overview Modal (`#ovModal`)
-- Full-screen list of all logged days in reverse-chronological order
-- Each card shows: date, meals, ratings, flags
-- **Long-press** a card to enter multi-select mode
-- Multi-select mode shows checkboxes and a bulk-delete button
-
-### Calendar Panel (`.cal-panel`)
-- Month grid with day cells
-- Day colour is determined by a 3-tier priority system (highest wins):
-  - **Blue** (`.keto-tested`) — `tested === true` AND `notInKeto === false`
-  - **Green** (`.keto-meals`) — 2 or more of `breakfastKeto`, `lunchKeto`, `dinnerKeto` are `true`
-  - **Yellow** (`.has-data`) — any log entry exists but neither above condition is met
-  - No colour — no log entry for that day
-- Gold outline = today; white outline = currently viewed day
-- Previous/next month navigation buttons only (Go to Today button has been removed)
-
-### Settings Modal (`#setModal`)
-- App version display (reads from `APP_VERSION` constant)
-- Storage usage bar (KB used / ~5 MB quota)
-- Snapshot creation, list, restore, export, delete
-- Export all / Import JSON buttons
-
-### Theme Panel (`#theme-panel`)
-- Dark themes: Midnight, Obsidian, Graphite, Navy, Twilight, Aurora, Forest, Ember
-- Light themes: Pearl, Azure, Blossom, Meadow, Lavender, Sunset
-- Auto-theme toggle (respects `prefers-color-scheme`)
-- Hover over a swatch to preview before applying
-
----
-
-## Theme System (CSS Variables)
-
-Themes work entirely through CSS custom properties on the `<html>` element.
+The `day_entries` table has just two columns:
 
 ```
-data-theme=""           → Midnight (default, dark)
-data-theme="obsidian"   → Pure black
-data-theme="graphite"   → Dark grey
-data-theme="navy"       → Deep navy
-data-theme="twilight"   → Purple dusk
-data-theme="aurora"     → Teal-green dark
-data-theme="forest"     → Dark green
-data-theme="ember"      → Deep red-brown
-data-theme="pearl"      → Off-white (light)
-data-theme="azure"      → Light blue
-data-theme="blossom"    → Light pink
-data-theme="meadow"     → Light green
-data-theme="lavender"   → Light purple
-data-theme="sunset"     → Light orange
+date TEXT PRIMARY KEY     —  "2026-06-08"
+data TEXT                 —  the full DayEntry, serialized to JSON
 ```
 
-#### Core CSS Variables
+`DayRepository` uses `kotlinx.serialization`
+(`Json { ignoreUnknownKeys = true; encodeDefaults = true }`) to convert `DayEntry ⇄ JSON`
+via `DayEntrySurrogate`. Because the table schema never changes, **adding a new field to
+`DayEntry` only requires giving it a default value** — no Room `Migration`, no table
+rebuild, no risk to existing data. Old rows simply deserialize with the default for the
+new field.
 
-| Variable | Usage |
-|----------|-------|
-| `--bg` | Page background |
-| `--surf` | Card/surface background |
-| `--surf2` | Elevated surface (hover states) |
-| `--inp` | Input field background |
-| `--bd` | Default border colour |
-| `--bd-i` | Interactive border colour |
-| `--txt` | Primary text |
-| `--txt-m` | Muted/secondary text |
-| `--txt-d` | Disabled/placeholder text |
-| `--accent` | Green (keto/positive colour) |
-| `--gold` | Gold (branding, highlights) |
-| `--red` | Red (off-keto, errors) |
-| `--blue` | Blue (info, links) |
+### Preferences — DataStore — `data/prefs/PrefsStore.kt`
 
-Light themes override all variables including text colours (dark text on light background). Dark themes only override background and surface opacity values.
+`PrefsStore` wraps Jetpack **DataStore Preferences** and persists:
+- the active theme id,
+- an `autoThemeEnabled` flag,
+- separate "night" and "light" theme ids for auto mode,
 
----
+each exposed as a `Flow`, collected by `AppViewModel` on init.
 
-## PWA & Offline Support
+### Photos — on-disk JPEGs — `data/photo/`
 
-### Service Worker (`sw.js`)
+Photos live entirely outside the `DayEntry` JSON, as files (not in the DB):
 
-Strategy: **Cache-first with background update**
-
-1. On install: caches `index.html`, `manifest.json`, and the three critical icons
-2. On activate: deletes any old cache versions
-3. On fetch: serves from cache immediately; fetches from network in background and updates cache
-
-Cache name: `keto-v3` (increment to force cache bust on next deploy — this is the only way to guarantee all devices pick up new app files)
-
-### iOS-Specific PWA
-
-The app supports "Add to Home Screen" on iOS via:
-- `apple-mobile-web-app-capable` meta tag
-- `apple-mobile-web-app-status-bar-style: black-translucent`
-- Four apple-touch-icon sizes: 120, 152, 167, 180px
-
----
-
-## Mobile-First Layout
-
-- `height: 100dvh` — uses dynamic viewport height (avoids iOS Safari URL bar issues)
-- `user-scalable=no` — pinch zoom disabled for consistent app-like feel
-- Touch targets minimum ~44px
-- Swipe gestures on the main content area:
-  - Swipe **left** → next step (or next day on summary)
-  - Swipe **right** → previous step (or previous day on summary)
-- Hidden scrollbars globally (`scrollbar-width: none`)
-- Responsive breakpoint at **560px** — wider layout for desktop use
+- **`PhotoStore`** owns `filesDir/photos/` and stores compressed JPEGs named
+  `{date}_{meal}_{timestamp}.jpg`. The timestamp makes every filename unique forever so a
+  deleted name is never recycled (Coil caches by path).
+- **Capture**: `createCaptureTarget()` hands the system camera app a `content://` URI via
+  `FileProvider` and `ActivityResultContracts.TakePicture()` — **no `CAMERA` permission**.
+  The temp file lives in `cacheDir/captures/`; `clearStaleCaptures()` sweeps it on launch.
+- **Gallery picker**: "🖼️ Choose from Gallery" in `MealPhotoArea` uses
+  `ActivityResultContracts.PickVisualMedia()` — the system Photo Picker, which needs
+  **no storage permission at all**.
+- **Same-day device import**: "📅 Photos from This Day" (`DeviceDayPhotosButton` in
+  `PhotoComponents.kt`) queries `MediaStore` directly via `DeviceGalleryQuery.photosForDate()`
+  for photos already on the device (taken with another camera app, before this feature
+  existed, etc.) and shows them in a grid to import from. This is the **one** photo path that
+  needs a real runtime permission — `READ_MEDIA_IMAGES` (API 33+, or its
+  `READ_MEDIA_VISUAL_USER_SELECTED` partial-access counterpart on 34+) or
+  `READ_EXTERNAL_STORAGE` (below that) — since it bypasses the system-mediated picker.
+- **Shared import pipeline**: `importUriToTempFile()` (`data/photo/PhotoImport.kt`) copies any
+  picked/device `content://` `Uri` into the same `cacheDir/captures/` temp directory camera
+  captures use, so gallery-picked and same-day-imported photos feed the exact same
+  `PhotoStore.addFromCapture()` compression pipeline as a camera capture.
+- **Compression**: `PhotoStore.addFromCapture()` decodes with a memory-safe
+  `inSampleSize`, corrects EXIF orientation, downscales to ≤900 px long edge, and
+  re-encodes JPEG at quality 75. Max 5 photos per meal.
+- **State**: `AppViewModel` exposes a `photoTick` counter the UI reads to re-list a meal's
+  photos after add/remove (`mealPhotos()` / `addPhoto()` / `removePhoto()`).
 
 ---
 
-## Import / Export Format
+## Application State — `AppViewModel`
 
-### Export All (`exportAll()`)
+One `ViewModel` drives the entire app, holding Compose `State`:
 
-Downloads a flat JSON file with date keys:
+| State | Description |
+|---|---|
+| `viewedKey: String` | Currently viewed date key (`YYYY-MM-DD`) |
+| `stepIndex: Int` | Current wizard step index |
+| `entry: DayEntry` | In-memory copy of the viewed day being edited |
+| `allEntries: Map<String, DayEntry>` | Full log, kept in memory for Overview / calendar / history |
+| `themeId: String` | Active theme id (plus auto-theme state) |
+| `pendingImport: PendingImport?` | Import confirmation summary (counts only) |
+| `messages` | `Channel<String>` → Compose `SnackbarHost` |
 
-```json
-{
-  "2024-11-01": { "breakfast": "...", "energy": 4, ... },
-  "2024-11-02": { ... }
-}
-```
+All UI-driving fields are `by mutableStateOf(...)`, so any change triggers recomposition.
+The core cycle is **mutate → save (async) → recompose (automatic)**: `update { transform }`
+applies the change to `entry` immediately (instant UI) and launches a `viewModelScope`
+coroutine to persist via the repository. There is no manual render call.
 
-Filename: `keto-all-data-YYYY-MM-DD.json`
+---
 
-### Import (`handleImport()`)
+## Wizard Steps — `data/Steps.kt`
 
-Accepts JSON files where keys are dates in any of these formats:
-- `YYYY-MM-DD` (bare)
-- `kt_d_YYYY-MM-DD` (full storage key)
-- `kt_YYYY-MM-DD` (legacy prefix)
+The core UI is a **7-step** daily logging wizard, driven by the `Step` enum.
 
-The importer strips any prefix, validates the date format, then performs a **non-destructive merge**:
+| Index | `Step` | Field(s) | Behaviour |
+|---|---|---|---|
+| 0 | `BREAKFAST` | `breakfast` (+ photo, keto stamp) | Free text; Next / Keto / Skip |
+| 1 | `LUNCH` | `lunch` (+ photo, keto stamp) | Free text; Next / Keto / Skip |
+| 2 | `DINNER` | `dinner` (+ photo, keto stamp) | Free text; Next / Keto / Skip |
+| 3 | `RATINGS` | `energy`, `happiness`, `portion` | 1–5 each; auto-advance ~380 ms after the last |
+| 4 | `HEART` | `heart`, `heartNotes` | Good/Mild/Bad; auto-advances on "Good", shows notes otherwise |
+| 5 | `FLAGS` | `notInKeto`, `tested`, `supplements`, `notes` | Combined Flags & Notes page |
+| 6 | `SUMMARY` | — | Read-only recap with inline per-field edit |
 
-1. Entries are split into **new** (date not in current data) and **duplicates** (date already exists)
-2. First confirm — shows counts of new days and duplicates, asks to proceed
-3. If duplicates exist, two chained dialogs offer three modes:
-   - **Merge (fill gaps)** — field-by-field merge via `mergeEntries()`; imported value only fills a field if the existing value is empty (`""`, `null`, or `false`). Existing values are never touched.
-   - **Overwrite** — entire day entry replaced by imported data
-   - **Skip** — duplicate days ignored entirely, existing data kept
-4. New entries are always written regardless of duplicate mode
-5. Toast reports how many days were written and which mode was applied
+`Step.dotted` is every step except `SUMMARY` (the ones that show a progress dot).
+Rating labels (`RATING_LABELS`, `PORTION_LABELS`), placeholders (`PLACEHOLDERS`), and
+default supplement chips (`SUPPLEMENT_DEFAULTS`) also live in `Steps.kt`.
 
-`mergeEntries(existing, imported)` is a standalone helper that handles field-level merging. Boolean fields treat `false` as "empty" since `false` is the default value for all boolean fields in this app.
+### Behaviour rules
+- **Meal steps (0–2)** show Next / Keto / Skip. "Keto" stamps the meal keto flag + a
+  timestamp, then advances like Next. The photo area renders *below* the action row so
+  buttons stay visible with the keyboard open.
+- **Ratings (3)** auto-advance shortly after selection.
+- **Heart (4)** auto-advances on "Good"; "Mild"/"Bad" reveal a notes field.
+- **Text fields** can always be skipped.
+- **Viewing a past day** jumps straight to the summary (read-only).
+- **Smart start**: on open, the wizard picks the time-of-day-relevant step and skips to
+  the first incomplete field.
 
-Existing data is never cleared. The worst case is a duplicate entry being overwritten if the user explicitly approves it.
+---
+
+## UI Layer — Jetpack Compose
+
+### Theming — `ui/theme/KetoTheme.kt`
+- `KetoColors` — a data class of the app's palette (`bg`, `surf`, `accent`, `gold`,
+  `red`, `blue`, `txt`, …).
+- `KETO_THEMES` — map of all **14 themes** (8 dark + 6 light) to `KetoColors`.
+- `THEME_LIST` — ordered `ThemeInfo(id, emoji, label, dark)` for the picker grid.
+- `LocalKetoColors` — a `CompositionLocal` making `KetoTheme.colors.xyz` available anywhere.
+- `KetoTracker(themeId) { … }` — the root wrapper that provides colors and builds a
+  matching Material 3 color scheme. `MainActivity` resolves auto-theme (via
+  `isSystemInDarkTheme()`) before passing the effective id in.
+
+### Components — `ui/components/`
+- `Common.kt` — `KetoCard`, `StepHeading`, `Dots`, `KText`, `ketoBorder`
+- `Header.kt` — `HeaderBar` (date nav + overview / theme / settings buttons)
+- `Buttons.kt` — `PrimaryButton`, `BackButton`, `SkipButton`, `KetoButton` (PillButton base)
+- `StepBodies.kt` — `MealBody`, `RatingsBody`, `HeartBody`, `FlagsBody`, `KetoTextArea`
+- `Summary.kt` — `SummaryCard` (full read-only recap + inline edit + `PhotoIndicator`)
+- `CalendarPanel.kt` — color-coded month grid + `CalMonthYearPicker` wheels
+- `PhotoComponents.kt` — `MealPhotoArea`, `PhotoViewer`, `PhotoIndicator`
+- `ThemePanel.kt` — bottom-sheet theme picker (scrim + swatch grid + auto toggle)
+
+### Screens — `ui/screens/`
+- `WizardScreen.kt` — top-level: wizard + header + overlay routing + swipe gestures + `BackHandler`
+- `Sheets.kt` — `OverviewSheet`, `SupplementsSheet`, `QuickSelectSheet` overlays
+- `SettingsSheet.kt` — about, theme shortcut, export/import, storage stats, snapshots placeholder
+- `Previews.kt` — `@Preview` composables across steps / overlays / themes
+
+### Interaction details
+- **Recomposition isolation**: `key(vm.stepIndex, vm.viewedKey)` wraps `StepContent` so
+  switching steps/days never bleeds stale `TextField` state.
+- **Gestures**: horizontal drags accumulate as `totalDrag`, evaluated once on `onDragEnd`
+  (>50 dp triggers step/day navigation).
+- **System back**: `BackHandler` walks back through UI state (close photo viewer → close
+  overlay → return to today → back one wizard step) and only falls through to the system
+  default when at today's first step with nothing open.
+
+---
+
+## Calendar — `ui/components/CalendarPanel.kt`
+
+A bottom-anchored overlay (`Overlay.CALENDAR`) opened from the header date chip.
+
+- **Grid math**: `DateUtils.monthGrid(year, month)` returns the 42-cell (6×7,
+  Sunday-first) layout — leading/current/trailing days — so the grid never collapses.
+- **Colour priority** (highest wins), evaluated against in-memory `vm.allEntries`:
+  - **Blue** — `tested == true` AND `notInKeto == false`
+  - **Green** — ≥2 of `breakfastKeto`/`lunchKeto`/`dinnerKeto`
+  - **Gold** — any log entry exists
+  - No colour — nothing logged
+  - Gold ring = today; white ring = currently viewed day (viewed wins over today).
+- **Navigation**: tapping a day in-month jumps via `vm.jumpTo()` and closes; tapping an
+  adjacent-month day re-centres the grid. Future days are dimmed and inert.
+- **Month/year picker**: `CalMonthYearPicker` — two snap-scrolled `WheelColumn`s for fast
+  multi-year travel; "Go →" jumps to the centred month/year, "Go to Today" jumps to now.
+
+Because `vm.jumpTo()` falls back to a blank `DayEntry` for unlogged dates, the calendar
+doubles as a "jump to any date" picker.
+
+---
+
+## Export / Import — `data/io/DataPortability.kt`
+
+All pure JSON encode/decode/merge logic lives in `DataPortability`; `SettingsSheet` owns
+the Storage Access Framework pickers and one confirmation dialog.
+
+- **Pickers**: export via `ActivityResultContracts.CreateDocument("application/json")`,
+  import via `OpenDocument()` (filtered to JSON); `DataPortability.write/read` stream
+  through `ContentResolver` on `Dispatchers.IO`.
+- **Format**: a flat, pretty-printed `{ "YYYY-MM-DD": { ...DayEntry... } }` map. `decode`
+  also accepts legacy `kt_d_` / `kt_` key prefixes and forces each entry's `date` to match
+  its normalised outer key.
+- **Pending-import flow**: `AppViewModel.importFrom` parses off the main thread and stores
+  only a `PendingImport(newCount, dupCount)` summary; `SettingsSheet` shows
+  `ImportConfirmDialog` (a custom `Dialog` styled like `ThemePanel`/`KetoCard` — the
+  codebase deliberately uses no Material3 `AlertDialog`).
+- **Resolution**: `confirmImport(mode)` applies `DataPortability.merge` (fills only empty
+  fields — `""`/`null`/`false` count as empty), full overwrite, or skip for duplicates;
+  **new days are always written**. Persisted in one pass via `IDayRepository.saveAll()`.
+
+---
+
+## Background Work & Notifications
+
+- **`work/BackupWorker.kt`** — WorkManager periodic job; writes a JSON backup to
+  `getExternalFilesDir("backups")` (internal storage fallback), keeping the last 7 files.
+- **`work/ReminderScheduler.kt`** — schedules the daily reminder via
+  `AlarmManager.setExactAndAllowWhileIdle` (falling back to `setAndAllowWhileIdle` if the
+  `SCHEDULE_EXACT_ALARM` permission hasn't been granted on Android 12+), rather than a
+  WorkManager `PeriodicWorkRequest` — periodic work is deliberately inexact and can drift by
+  hours under Doze/battery optimization, which made the reminder feel random. Also exposes
+  `canScheduleExactAlarms()` / `requestExactAlarmPermission()`, surfaced in the Notifications
+  settings page.
+- **`work/ReminderReceiver.kt`** — the `BroadcastReceiver` the alarm fires into; posts the
+  reminder (same meal-completeness suppression logic as before) and always re-arms the next
+  day's alarm before finishing, since exact alarms are one-shot.
+- **`work/BootReceiver.kt`** — re-arms the reminder alarm after a device reboot, since exact
+  `AlarmManager` alarms (unlike WorkManager jobs) don't survive one.
+- **`data/notifications/NotificationHelper.kt`** — builds the notification channel + the
+  reminder notification (gold icon tint via `R.color.keto_gold`).
+- **`data/prefs/PrefsStore.kt`** — persists `notificationHour` *and* `notificationMinute` (the
+  Notifications settings page has a full custom time picker, not just the three quick presets).
+- **Permissions**: `POST_NOTIFICATIONS` (Android 13+, requested at runtime from the
+  Notifications settings row), `SCHEDULE_EXACT_ALARM` (Android 12+, a user-grantable special
+  permission — the settings page shows a banner + button to grant it when missing), and
+  `RECEIVE_BOOT_COMPLETED`. No camera permission is needed (see "Photos" for the media
+  permissions used by the same-day device-gallery import).
+
+---
+
+## Storage Stats — `data/io/StorageStats.kt`
+
+`StorageUsage.compute()` sizes the Room DB file directly
+(`context.getDatabasePath(KETO_DB_NAME)`) and sums every JPEG in `PhotoStore`'s directory,
+reporting usage against a fixed 512 MB display ceiling (native app-private storage has no
+real ~5 MB quota). `AppViewModel.loadStorageStats()` runs it lazily on `Dispatchers.IO`
+when Settings opens; `StorageBar` renders the total/percentage plus a day/photo breakdown.
+
+---
+
+## Versioning
+
+The app version is tracked in two places that **must both be updated** on meaningful changes:
+
+1. **`APP_VERSION`** constant in `ui/screens/SettingsSheet.kt` — shown in Settings.
+2. **`versionName` / `versionCode`** in `android/app/build.gradle.kts` — the installable
+   build identity (bump `versionCode` for any release the Play Store / device must treat
+   as an update).
+
+Keep `APP_VERSION` and `versionName` in sync — a native install updates by version code,
+so there is no cache to invalidate.
 
 ---
 
 ## Common Patterns & Conventions
 
-### Adding a New Step
+### Adding a new field to the data model
+1. Add the field to `DayEntry` **with a default value** (`""`, `null`, `false`, etc.).
+2. Add it to `DayEntrySurrogate` so it serializes. No Room migration is needed — old rows
+   deserialize with the default.
+3. Surface it in the relevant `StepBodies` composable, `SummaryCard`, and
+   `DataPortability.merge` if it should participate in import merging.
 
-1. Add a new entry to the `STEPS` array in `renderStep()` with `{field, icon, label, type}`
-2. Handle the new `type` in the `renderStep()` switch/if block
-3. Ensure `defStep()` logic accounts for the new field when checking completeness
-4. Update `renderSum()` to display the new field in the summary
+### Adding a new wizard step
+1. Add a `Step` enum entry (id, icon, label, title, sub) in `Steps.kt`.
+2. Handle it in `StepContent()` (`WizardScreen`) with the right body composable.
+3. Update smart-start / "first incomplete" logic if completeness depends on the new field.
+4. Add it to `SummaryCard`.
 
-### Adding a New Theme
-
-1. Add a CSS block in `<style>`: `[data-theme="yourtheme"]{ --bg: ...; ... }`
-2. Add an entry to the `THEMES` array in JS: `{id, emoji, label, dark: true/false}`
-3. `renderThemeGrid()` will pick it up automatically
-
-### Modifying the Data Schema
-
-1. Update the `load()` function's default blank entry to include the new field with a default value
-2. This ensures existing entries without the field get a sensible default on read
-3. Update `renderStep()`, `renderSum()`, and `handleImport()` as needed
-
-### Versioning
-
-The app uses a simple numeric version tracked in two places that **must both be updated** when making meaningful changes:
-
-1. **`APP_VERSION` constant** in `index.html` — displayed in the Settings modal so the user can confirm which version is running
-2. **`CACHE` name** in `sw.js` — controls the service worker cache; incrementing it (e.g. `keto-v3` → `keto-v4`) forces all devices to discard the old cache and download fresh files
-
-**When to increment:**
-- Any user-facing feature addition or change → bump `APP_VERSION` (e.g. `1.2` → `1.3`)
-- Any deploy where you need devices to reliably update → also bump the cache name in `sw.js`
-- Bug fixes or minor tweaks → use judgement; bump if the fix is important enough to force an update
-
-**Format:** `APP_VERSION` uses `major.minor` (e.g. `1.0`, `1.1`, `1.2`). The cache name uses `keto-vN` where N is a simple integer.
-
-> **IMPORTANT for AI assistants:** Always check the current `APP_VERSION` value in `index.html` and the cache name in `sw.js` before finishing a session. If meaningful changes were made, increment both before committing.
+### Adding a new theme
+1. Add a `KetoColors` entry to `KETO_THEMES` in `KetoTheme.kt`.
+2. Add a `ThemeInfo(id, emoji, label, dark)` to `THEME_LIST` — the picker reads it
+   automatically.
 
 ---
 
 ## Known Constraints
 
-- **No server**: All data is local. No sync across devices (use Export/Import manually)
-- **localStorage limit**: ~5 MB per origin; storage bar in Settings shows usage
-- **IndexedDB for photos**: Photos do not count toward the 5 MB localStorage quota but are device-local and not included in JSON exports
-- **Single file**: All CSS and JS must stay in `index.html` — there is no bundler
-- **No modules**: JS is plain global scope — be careful with variable naming
-- **No tests**: There are no unit or integration tests; test manually in browser
-- **Browser support**: Targets modern browsers (ES6+, CSS Grid, Service Workers, IndexedDB)
+- **Local-only**: all data is on the device. No server, no cross-device sync — use
+  Export/Import (and the periodic backup) to move or back up data.
+- **Photos are device-local files**: stored in app-private storage, sized into the
+  storage stats, but **not** included in JSON exports.
+- **No `AlertDialog`**: dialogs are custom `Dialog` composables styled like
+  `KetoCard`/`ThemePanel` — match that pattern for new dialogs.
+- **Snapshots** (named in-app backups) are **partially built** — a disabled placeholder in
+  Settings; the data/IO scaffolding (`Snapshot.kt`, `SnapshotStore.kt`) exists.
+- **Tests**: JVM unit tests cover the data layer (`src/test`); UI is verified via Compose
+  Previews and manual testing.
+- **Min SDK 26**, target/compile SDK 35; Kotlin 2.0, Compose BOM, KSP for Room.
+</content>

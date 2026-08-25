@@ -51,6 +51,7 @@ class FakeDayRepository : IDayRepository {
 
     override suspend fun saveAll(entries: List<DayEntry>) { entries.forEach { days[it.date] = it } }
 
+    override suspend fun delete(key: String) { days.remove(key) }
     override suspend fun deleteAll() { days.clear() }
 
     fun loadSync(date: String): DayEntry = days[date] ?: DayEntry(date = date)

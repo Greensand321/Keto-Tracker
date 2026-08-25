@@ -15,12 +15,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.DayEntry
 import com.ketotracker.data.Heart
 import com.ketotracker.data.Meal
+import com.ketotracker.data.SUPPLEMENT_DEFAULTS
 import com.ketotracker.data.SnapshotMeta
 import com.ketotracker.data.Step
 import com.ketotracker.data.db.KetoDatabase
@@ -39,7 +41,7 @@ import com.ketotracker.data.repository.DayRepository
 import com.ketotracker.data.repository.FakeDayRepository
 import com.ketotracker.data.repository.IDayRepository
 import com.ketotracker.work.BackupWorker
-import com.ketotracker.work.ReminderWorker
+import com.ketotracker.work.ReminderScheduler
 import java.io.File
 import java.time.LocalTime
 
@@ -123,6 +125,10 @@ class AppViewModel(
     var quickSelectItems by mutableStateOf(DEFAULT_QUICK_FOODS)
         private set
 
+    // ── Supplements ───────────────────────────────────────────────────────────
+    var supplementItems by mutableStateOf(SUPPLEMENT_DEFAULTS)
+        private set
+
     // ── Periodic backup ───────────────────────────────────────────────────────
     var backupEnabled by mutableStateOf(false)
         private set
@@ -134,6 +140,8 @@ class AppViewModel(
         private set
     var notificationHour by mutableStateOf(20)
         private set
+    var notificationMinute by mutableStateOf(0)
+        private set
 
     init {
         // Observe the persisted theme preferences.
@@ -144,14 +152,16 @@ class AppViewModel(
             viewModelScope.launch { prefs.lightAutoTheme.collect { id -> lightAutoThemeId = id } }
             viewModelScope.launch { prefs.snapshots.collect { snaps -> snapshots = snaps } }
             viewModelScope.launch {
-                prefs.quickSelectItems.collect { items ->
-                    quickSelectItems = items.ifEmpty { DEFAULT_QUICK_FOODS }
-                }
+                quickSelectItems = prefs.quickSelectItems.first() ?: DEFAULT_QUICK_FOODS
+            }
+            viewModelScope.launch {
+                supplementItems = prefs.supplementItems.first() ?: SUPPLEMENT_DEFAULTS
             }
             viewModelScope.launch { prefs.backupEnabled.collect { on -> backupEnabled = on } }
             viewModelScope.launch { prefs.backupFrequency.collect { freq -> backupFrequency = freq } }
             viewModelScope.launch { prefs.notificationsEnabled.collect { on -> notificationsEnabled = on } }
             viewModelScope.launch { prefs.notificationHour.collect { h -> notificationHour = h } }
+            viewModelScope.launch { prefs.notificationMinute.collect { m -> notificationMinute = m } }
         }
 
         // Load the full log ONCE. allEntries is then a plain in-memory cache
@@ -176,6 +186,10 @@ class AppViewModel(
             "Eggs", "Bacon", "Chicken", "Steak", "Salmon", "Avocado", "Cheddar", "HM Mayo",
             "Sourdough", "Broccoli", "Cauliflower", "Almonds", "Coffee", "Butter", "Cream", "Olive Oil",
         )
+
+        /** Matches the web app's `maxlength="40"` on the quick-select add input. */
+        private const val MAX_QUICK_SELECT_ITEM_LENGTH = 40
+        private const val MAX_SUPPLEMENT_ITEM_LENGTH = 40
 
         /** Production factory — wires Room + DataStore. */
         fun factory(app: Application): ViewModelProvider.Factory = viewModelFactory {
@@ -423,6 +437,15 @@ class AppViewModel(
     // merge/overwrite/skip resolution, surfacing only a summary for the UI to
     // confirm via `pendingImport`.
 
+    fun deleteDay(key: String) {
+        allEntries = allEntries - key
+        if (viewedKey == key) goToday()
+        viewModelScope.launch {
+            runCatching { repo.delete(key) }
+                .onFailure { reportError("Couldn't delete entry", it) }
+        }
+    }
+
     fun exportAll(context: Context, uri: Uri) {
         val snapshot = allEntries
         viewModelScope.launch {
@@ -608,23 +631,72 @@ class AppViewModel(
 
     // ── Quick-select ──────────────────────────────────────────────────────────
 
+    /**
+     * Adds [food] to the quick-select list, ignoring blank input and
+     * duplicates of an existing item regardless of case/whitespace (so
+     * "eggs" doesn't sit alongside "Eggs" as a near-identical chip).
+     * Mirrors the web app's `addQsItemInline` (index.html ~L1549).
+     */
     fun addQuickSelectItem(food: String) {
-        val trimmed = food.trim()
-        if (trimmed.isEmpty() || trimmed in quickSelectItems) return
+        val trimmed = food.trim().take(MAX_QUICK_SELECT_ITEM_LENGTH)
+        if (trimmed.isEmpty()) return
+        if (quickSelectItems.any { it.equals(trimmed, ignoreCase = true) }) return
         val updated = quickSelectItems + trimmed
         quickSelectItems = updated
-        viewModelScope.launch { runCatching { prefs?.setQuickSelectItems(updated) } }
+        persistQuickSelectItems(updated)
     }
 
     fun removeQuickSelectItem(food: String) {
         val updated = quickSelectItems - food
         quickSelectItems = updated
-        viewModelScope.launch { runCatching { prefs?.setQuickSelectItems(updated) } }
+        persistQuickSelectItems(updated)
     }
 
     fun resetQuickSelectDefaults() {
         quickSelectItems = DEFAULT_QUICK_FOODS
-        viewModelScope.launch { runCatching { prefs?.setQuickSelectItems(DEFAULT_QUICK_FOODS) } }
+        persistQuickSelectItems(DEFAULT_QUICK_FOODS)
+    }
+
+    /**
+     * Persists [items] and reports failures back to the user — a save that
+     * silently fails would otherwise leave the in-memory list (with the new
+     * item visible everywhere this session) out of sync with disk, so the
+     * edit quietly reverts the next time the app starts.
+     */
+    private fun persistQuickSelectItems(items: List<String>) {
+        viewModelScope.launch {
+            runCatching { prefs?.setQuickSelectItems(items) }
+                .onFailure { reportError("Couldn't save quick-select items", it) }
+        }
+    }
+
+    // ── Supplements ───────────────────────────────────────────────────────────
+
+    fun addSupplementItem(name: String) {
+        val trimmed = name.trim().take(MAX_SUPPLEMENT_ITEM_LENGTH)
+        if (trimmed.isEmpty()) return
+        if (supplementItems.any { it.equals(trimmed, ignoreCase = true) }) return
+        val updated = supplementItems + trimmed
+        supplementItems = updated
+        persistSupplementItems(updated)
+    }
+
+    fun removeSupplementItem(name: String) {
+        val updated = supplementItems.filter { it != name }
+        supplementItems = updated
+        persistSupplementItems(updated)
+    }
+
+    fun resetSupplementDefaults() {
+        supplementItems = SUPPLEMENT_DEFAULTS
+        persistSupplementItems(SUPPLEMENT_DEFAULTS)
+    }
+
+    private fun persistSupplementItems(items: List<String>) {
+        viewModelScope.launch {
+            runCatching { prefs?.setSupplementItems(items) }
+                .onFailure { reportError("Couldn't save supplement items", it) }
+        }
     }
 
     // ── Periodic backup ───────────────────────────────────────────────────────
@@ -651,8 +723,9 @@ class AppViewModel(
     /**
      * Enables or disables the daily reminder. When enabling, creates the
      * notification channel (safe to call repeatedly — Android no-ops it) and
-     * schedules the WorkManager reminder. Caller must have already obtained
-     * POST_NOTIFICATIONS permission on Android 13+ before calling with true.
+     * arms the exact-alarm reminder (see [ReminderScheduler]). Caller must
+     * have already obtained POST_NOTIFICATIONS permission on Android 13+
+     * before calling with true.
      */
     fun setNotificationsEnabled(context: Context, enabled: Boolean) {
         notificationsEnabled = enabled
@@ -660,19 +733,21 @@ class AppViewModel(
             runCatching { prefs?.setNotificationsEnabled(enabled) }
             if (enabled) {
                 NotificationHelper.createChannel(context)
-                ReminderWorker.schedule(context, notificationHour)
+                ReminderScheduler.schedule(context, notificationHour, notificationMinute)
             } else {
-                ReminderWorker.cancel(context)
+                ReminderScheduler.cancel(context)
             }
         }
     }
 
-    /** Changes the reminder hour, rescheduling the worker if notifications are on. */
-    fun setNotificationHour(context: Context, hour: Int) {
+    /** Changes the reminder time, rescheduling the alarm if notifications are on. */
+    fun setNotificationTime(context: Context, hour: Int, minute: Int) {
         notificationHour = hour
+        notificationMinute = minute
         viewModelScope.launch {
             runCatching { prefs?.setNotificationHour(hour) }
-            if (notificationsEnabled) ReminderWorker.schedule(context, hour)
+            runCatching { prefs?.setNotificationMinute(minute) }
+            if (notificationsEnabled) ReminderScheduler.schedule(context, hour, minute)
         }
     }
 
@@ -701,7 +776,7 @@ class AppViewModel(
     internal fun defStep(e: DayEntry): Int {
         if (!DateUtils.isToday(viewedKey)) return Step.SUMMARY.ordinal
         val candidates = Step.entries.filter {
-            it != Step.FLAGS && it != Step.NOTES && it != Step.SUMMARY
+            it != Step.FLAGS && it != Step.SUMMARY
         }
         val incomplete = candidates.filter { isIncomplete(it, e) }
         if (incomplete.isEmpty()) return Step.SUMMARY.ordinal
