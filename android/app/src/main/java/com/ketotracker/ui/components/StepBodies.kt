@@ -50,6 +50,8 @@ import com.ketotracker.data.Meal
 import com.ketotracker.data.PLACEHOLDERS
 import com.ketotracker.data.PORTION_LABELS
 import com.ketotracker.data.RATING_LABELS
+import com.ketotracker.data.SupplementDose
+import com.ketotracker.data.SupplementSchedule
 import com.ketotracker.model.RatingField
 import com.ketotracker.ui.theme.KetoTheme
 
@@ -279,6 +281,12 @@ fun FlagsBody(
     onToggleNotInKeto: () -> Unit,
     onToggleTested: () -> Unit,
     onOpenSupplements: () -> Unit,
+    asNeededItems: List<String>,
+    activeSchedule: SupplementSchedule?,
+    scheduleDayIndex: Int,
+    scheduledDoses: List<SupplementDose>,
+    onToggleDose: (String) -> Unit,
+    onOpenSchedule: () -> Unit,
 ) {
     val c = KetoTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -302,8 +310,19 @@ fun FlagsBody(
             onColor = c.accent,
             onClick = onToggleTested,
         )
-        val total = entry.supplements.values.sum()
-        QuickButton("💊 Supplements" + if (total > 0) " · $total logged" else "", onOpenSupplements)
+        SupplementScheduleWidget(
+            schedule = activeSchedule,
+            dayIndex = scheduleDayIndex,
+            doses = scheduledDoses,
+            taken = entry.supplements,
+            onToggle = onToggleDose,
+            onOpenSchedule = onOpenSchedule,
+        )
+        // Scheduled doses and As-Needed chips both write into entry.supplements by name, so
+        // this total is filtered to As-Needed items only — otherwise a scheduled dose taken
+        // via the widget above would silently inflate the "As-Needed" count too.
+        val total = entry.supplements.filterKeys { it in asNeededItems }.values.sum()
+        QuickButton("💊 As-Needed" + if (total > 0) " · $total logged" else "", onOpenSupplements)
     }
 }
 

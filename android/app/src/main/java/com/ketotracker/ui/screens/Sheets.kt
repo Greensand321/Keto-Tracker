@@ -30,7 +30,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
@@ -51,6 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.Meal
+import com.ketotracker.data.SupplementDose
+import com.ketotracker.data.SupplementSchedule
 import com.ketotracker.model.AppViewModel
 import com.ketotracker.ui.components.KText
 import com.ketotracker.ui.theme.KetoTheme
@@ -268,6 +272,125 @@ private fun SupplementChip(name: String, count: Int, onTap: () -> Unit, onClear:
                 KText("$count", size = 11, color = Color.White, weight = FontWeight.ExtraBold)
             }
         }
+    }
+}
+
+// ── Supplement schedule: switch active rotation + view the full cycle ────────
+@Composable
+fun SupplementScheduleSheet(vm: AppViewModel, onManage: () -> Unit, onClose: () -> Unit) {
+    val c = KetoTheme.colors
+    FullScreenSheet("💊 Supplement Schedule", onClose) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            if (vm.schedules.isEmpty()) {
+                KText(
+                    "No supplement schedule set up yet — create or import one in Settings.",
+                    size = 14, color = c.txtM,
+                )
+                ScheduleManageButton(onManage)
+                return@FullScreenSheet
+            }
+
+            if (vm.schedules.size > 1) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    KText("SCHEDULES", size = 11, color = c.txtM, weight = FontWeight.Bold, letterSpacing = 1.5f)
+                    vm.schedules.forEach { schedule ->
+                        ScheduleRow(
+                            schedule = schedule,
+                            active = schedule.id == vm.activeScheduleId,
+                            onSelect = { vm.setActiveSchedule(schedule.id) },
+                        )
+                    }
+                }
+            }
+
+            val active = vm.activeSchedule
+            if (active != null) {
+                val todayIdx = vm.scheduleDayIndex(active, vm.viewedKey)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    KText(
+                        "FULL ROTATION — ${active.name.uppercase()}",
+                        size = 11, color = c.txtM, weight = FontWeight.Bold, letterSpacing = 1.5f,
+                    )
+                    active.days.forEachIndexed { idx, doses ->
+                        ScheduleDayCard(dayNumber = idx + 1, doses = doses, isToday = idx == todayIdx)
+                    }
+                }
+            }
+
+            ScheduleManageButton(onManage)
+        }
+    }
+}
+
+@Composable
+private fun ScheduleRow(schedule: SupplementSchedule, active: Boolean, onSelect: () -> Unit) {
+    val c = KetoTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (active) c.accent.copy(alpha = 0.12f) else c.surf)
+            .border(1.dp, if (active) c.accent else c.bd, RoundedCornerShape(12.dp))
+            .clickable(onClick = onSelect)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        KText(schedule.name, size = 14, color = if (active) c.accent else c.txt, weight = FontWeight.SemiBold)
+        if (active) KText("Active", size = 12, color = c.accent, weight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun ScheduleDayCard(dayNumber: Int, doses: List<SupplementDose>, isToday: Boolean) {
+    val c = KetoTheme.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isToday) c.accent.copy(alpha = 0.08f) else c.surf)
+            .border(1.dp, if (isToday) c.accent else c.bd, RoundedCornerShape(12.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        KText(
+            "Day $dayNumber" + if (isToday) " · Today" else "",
+            size = 13, color = if (isToday) c.accent else c.txt, weight = FontWeight.SemiBold,
+        )
+        if (doses.isEmpty()) {
+            KText("Nothing scheduled", size = 12, color = c.txtD)
+        } else {
+            doses.forEach { dose ->
+                KText(
+                    dose.name + if (dose.dosage.isNotEmpty()) " — ${dose.dosage}" else "",
+                    size = 13, color = c.txtM,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleManageButton(onManage: () -> Unit) {
+    val c = KetoTheme.colors
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(c.surf2)
+            .border(1.dp, c.bdI, RoundedCornerShape(12.dp))
+            .clickable(onClick = onManage)
+            .padding(14.dp),
+    ) {
+        KText("⚙️ Manage in Settings", size = 14, color = c.txtM, weight = FontWeight.Medium)
     }
 }
 

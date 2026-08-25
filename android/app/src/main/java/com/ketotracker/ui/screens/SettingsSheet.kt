@@ -3,6 +3,9 @@
 package com.ketotracker.ui.screens
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -60,23 +63,30 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import com.ketotracker.data.DateUtils
+import com.ketotracker.data.MAX_CYCLE_LENGTH_DAYS
+import com.ketotracker.data.MIN_CYCLE_LENGTH_DAYS
 import com.ketotracker.data.SUPPLEMENT_DEFAULTS
+import com.ketotracker.data.SUPPLEMENT_SCHEDULE_AI_PROMPT
 import com.ketotracker.data.SnapshotMeta
+import com.ketotracker.data.SupplementDose
+import com.ketotracker.data.SupplementSchedule
 import com.ketotracker.data.io.StorageStats
 import com.ketotracker.model.AppViewModel
 import com.ketotracker.model.ImportMode
 import com.ketotracker.model.PendingImport
+import com.ketotracker.model.PendingScheduleImport
 import com.ketotracker.ui.components.KText
 import com.ketotracker.ui.theme.KetoTheme
 import com.ketotracker.work.ReminderScheduler
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 private const val APP_VERSION = "1.0-native-demo"
 
 private enum class SettingsPage {
-    MAIN, DATA_STORAGE, QUICK_SELECT, SUPPLEMENTS, NOTIFICATIONS, APPEARANCE, ABOUT
+    MAIN, DATA_STORAGE, QUICK_SELECT, SUPPLEMENT_SCHEDULE, SUPPLEMENTS, NOTIFICATIONS, APPEARANCE, ABOUT
 }
 
 @Composable
@@ -102,6 +112,10 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
     val importZipLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) vm.importFromZip(context, uri) }
+
+    val importScheduleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) vm.importSchedule(context, uri) }
 
     var pendingSnapshotExportId by remember { mutableStateOf<Long?>(null) }
     val exportSnapshotLauncher = rememberLauncherForActivityResult(
@@ -151,6 +165,11 @@ fun SettingsSheet(vm: AppViewModel, onTheme: () -> Unit, onClose: () -> Unit) {
                 SettingsPage.QUICK_SELECT -> SettingsQuickSelectPage(
                     vm = vm,
                     onBack = { page = SettingsPage.MAIN },
+                )
+                SettingsPage.SUPPLEMENT_SCHEDULE -> SettingsSupplementSchedulePage(
+                    vm = vm,
+                    onBack = { page = SettingsPage.MAIN },
+                    onImport = { importScheduleLauncher.launch(arrayOf("application/json")) },
                 )
                 SettingsPage.SUPPLEMENTS -> SettingsSupplementsPage(
                     vm = vm,
@@ -210,8 +229,13 @@ private fun SettingsMainPage(
                 sub = "${vm.quickSelectItems.size} item(s)",
             ) { onNavigate(SettingsPage.QUICK_SELECT) }
             NavRow(
+                icon = "📅",
+                label = "Supplement Schedule",
+                sub = vm.activeSchedule?.let { "Active: ${it.name}" } ?: "${vm.schedules.size} schedule(s)",
+            ) { onNavigate(SettingsPage.SUPPLEMENT_SCHEDULE) }
+            NavRow(
                 icon = "💊",
-                label = "Supplements",
+                label = "As-Needed Supplements",
                 sub = "${vm.supplementItems.size} item(s)",
             ) { onNavigate(SettingsPage.SUPPLEMENTS) }
             NavRow(
@@ -282,7 +306,7 @@ private fun SettingsDataStoragePage(
 
             // ── Full ZIP backup ───────────────────────────────────────────────
             SettingsSection("Full Backup") {
-                InfoBanner("Includes all entries AND meal photos in a single .zip archive.")
+                InfoBanner("Includes all entries, meal photos, AND supplement schedules in a single .zip archive.")
                 SettingsButton("📦 Export Full Backup", subtitle = "Save data + photos as a .zip") {
                     onExportZip()
                 }
@@ -543,6 +567,428 @@ private fun SettingsQuickSelectPage(vm: AppViewModel, onBack: () -> Unit) {
     }
 }
 
+// ── Supplement Schedule page ────────────────────────────────────────────────
+
+@Composable
+private fun SettingsSupplementSchedulePage(
+    vm: AppViewModel,
+    onBack: () -> Unit,
+    onImport: () -> Unit,
+) {
+    val context = LocalContext.current
+    var editingSchedule by remember { mutableStateOf<SupplementSchedule?>(null) }
+    var isNewSchedule by remember { mutableStateOf(false) }
+
+    val current = editingSchedule
+    if (current != null) {
+        SupplementScheduleEditor(
+            schedule = current,
+            isNew = isNewSchedule,
+            onSave = { saved -> vm.saveSchedule(saved); editingSchedule = null },
+            onDelete = if (isNewSchedule) null else {
+                { vm.deleteSchedule(current.id); editingSchedule = null }
+            },
+            onCancel = { editingSchedule = null },
+        )
+    } else {
+        Column(Modifier.fillMaxSize()) {
+            SettingsSubHeader("📅 Supplement Schedule", onBack)
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                InfoBanner(
+                    "Set up your rotation once and the Flags step will show each day's " +
+                        "recommended doses — tap one to mark it taken.",
+                )
+
+                if (vm.schedules.isNotEmpty()) {
+                    SettingsSection("Your Schedules") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            vm.schedules.forEach { schedule ->
+                                ScheduleListRow(
+                                    schedule = schedule,
+                                    active = schedule.id == vm.activeScheduleId,
+                                    onOpen = { editingSchedule = schedule; isNewSchedule = false },
+                                    onActivate = { vm.setActiveSchedule(schedule.id) },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                SettingsSection("Add a Schedule") {
+                    SettingsButton("＋ New Schedule", subtitle = "Build it day by day") {
+                        editingSchedule = blankSchedule()
+                        isNewSchedule = true
+                    }
+                    SettingsButton("📥 Import Schedule", subtitle = "From a JSON file") { onImport() }
+                    SettingsButton(
+                        "🤖 Copy AI Prompt",
+                        subtitle = "Paste into any AI chat, get back an importable file",
+                    ) {
+                        copyToClipboard(context, "Supplement schedule prompt", SUPPLEMENT_SCHEDULE_AI_PROMPT)
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+
+        vm.pendingScheduleImport?.let { pending ->
+            ScheduleImportConfirmDialog(
+                pending = pending,
+                onConfirm = {
+                    vm.confirmScheduleImport()
+                    vm.schedules.find { it.id == pending.schedule?.id }?.let {
+                        editingSchedule = it
+                        isNewSchedule = false
+                    }
+                },
+                onCancel = { vm.cancelScheduleImport() },
+            )
+        }
+    }
+}
+
+private fun blankSchedule(): SupplementSchedule = SupplementSchedule(
+    id = UUID.randomUUID().toString(),
+    name = "",
+    cycleLengthDays = 7,
+    days = List(7) { emptyList() },
+    anchorDate = DateUtils.todayKey(),
+)
+
+private fun copyToClipboard(context: Context, label: String, text: String) {
+    val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    manager.setPrimaryClip(ClipData.newPlainText(label, text))
+}
+
+@Composable
+private fun ScheduleListRow(
+    schedule: SupplementSchedule,
+    active: Boolean,
+    onOpen: () -> Unit,
+    onActivate: () -> Unit,
+) {
+    val c = KetoTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(13.dp))
+            .background(c.surf)
+            .border(if (active) 1.5.dp else 1.dp, if (active) c.accent else c.bd, RoundedCornerShape(13.dp))
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            KText(schedule.name, size = 15, color = c.txt, weight = FontWeight.SemiBold)
+            KText("${schedule.cycleLengthDays}-day rotation", size = 12, color = c.txtD)
+        }
+        if (active) {
+            KText("★ Active", size = 12, color = c.accent, weight = FontWeight.Bold)
+        } else {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, c.bd, RoundedCornerShape(8.dp))
+                    .clickable(onClick = onActivate)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                KText("Activate", size = 12, color = c.txtM)
+            }
+        }
+    }
+}
+
+/** Full editor for one schedule — name, cycle length, an approximate anchor-date nudge, and per-day dose lists. */
+@Composable
+private fun SupplementScheduleEditor(
+    schedule: SupplementSchedule,
+    isNew: Boolean,
+    onSave: (SupplementSchedule) -> Unit,
+    onDelete: (() -> Unit)?,
+    onCancel: () -> Unit,
+) {
+    val c = KetoTheme.colors
+    var name by remember { mutableStateOf(schedule.name) }
+    var cycleLength by remember { mutableStateOf(schedule.cycleLengthDays) }
+    var anchorDate by remember { mutableStateOf(schedule.anchorDate) }
+    var days by remember { mutableStateOf(schedule.days) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    // Keep `days` in sync with cycleLength — grow with empty days, shrink by trimming the tail.
+    LaunchedEffect(cycleLength) {
+        days = when {
+            days.size < cycleLength -> days + List(cycleLength - days.size) { emptyList() }
+            days.size > cycleLength -> days.take(cycleLength)
+            else -> days
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        SettingsSubHeader(if (isNew) "New Schedule" else "Edit Schedule", onCancel)
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            SettingsSection("Name") {
+                ScheduleTextField(value = name, placeholder = "e.g. Standard Rotation", onValueChange = { name = it })
+            }
+            SettingsSection("Cycle Length") {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    StepperButton("−") { if (cycleLength > MIN_CYCLE_LENGTH_DAYS) cycleLength-- }
+                    KText("$cycleLength day${if (cycleLength != 1) "s" else ""}", size = 16, color = c.txt, weight = FontWeight.SemiBold)
+                    StepperButton("+") { if (cycleLength < MAX_CYCLE_LENGTH_DAYS) cycleLength++ }
+                }
+            }
+            SettingsSection("Day 1 Starts On") {
+                KText(DateUtils.fmtDate(anchorDate), size = 15, color = c.txt)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallButton("Today") { anchorDate = DateUtils.todayKey() }
+                    SmallButton("− 1 day") { anchorDate = DateUtils.offKey(anchorDate, -1) }
+                    SmallButton("+ 1 day") { anchorDate = DateUtils.offKey(anchorDate, 1) }
+                }
+            }
+            SettingsSection("Days") {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    days.forEachIndexed { idx, doses ->
+                        DayEditorCard(
+                            dayNumber = idx + 1,
+                            doses = doses,
+                            onChange = { updated -> days = days.toMutableList().also { it[idx] = updated } },
+                        )
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, c.bd, RoundedCornerShape(12.dp))
+                        .clickable(onClick = onCancel)
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) { KText("Cancel", size = 14, color = c.txtM, weight = FontWeight.SemiBold) }
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (name.isNotBlank()) c.accent else c.bdI)
+                        .clickable(enabled = name.isNotBlank()) {
+                            onSave(schedule.copy(name = name.trim(), cycleLengthDays = cycleLength, anchorDate = anchorDate, days = days))
+                        }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) { KText("Save", size = 14, color = Color.White, weight = FontWeight.SemiBold) }
+            }
+            if (onDelete != null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { showDeleteConfirm = true }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) { KText("Delete Schedule", size = 13, color = c.red, weight = FontWeight.SemiBold) }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    if (showDeleteConfirm && onDelete != null) {
+        DeleteScheduleDialog(
+            name = schedule.name,
+            onConfirm = { showDeleteConfirm = false; onDelete() },
+            onCancel = { showDeleteConfirm = false },
+        )
+    }
+}
+
+@Composable
+private fun DayEditorCard(dayNumber: Int, doses: List<SupplementDose>, onChange: (List<SupplementDose>) -> Unit) {
+    val c = KetoTheme.colors
+    var newName by remember { mutableStateOf("") }
+    var newDosage by remember { mutableStateOf("") }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(13.dp))
+            .background(c.surf)
+            .border(1.dp, c.bd, RoundedCornerShape(13.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        KText("Day $dayNumber", size = 14, color = c.gold, weight = FontWeight.Bold)
+        doses.forEachIndexed { idx, dose ->
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    KText(dose.name, size = 14, color = c.txt, weight = FontWeight.Medium)
+                    if (dose.dosage.isNotEmpty()) KText(dose.dosage, size = 12, color = c.txtM)
+                }
+                Box(
+                    Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(c.bdI)
+                        .clickable { onChange(doses.filterIndexed { i, _ -> i != idx }) },
+                    contentAlignment = Alignment.Center,
+                ) { KText("×", size = 13, color = c.txtM, weight = FontWeight.Bold) }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ScheduleTextField(
+                value = newName, placeholder = "Supplement", onValueChange = { newName = it },
+                modifier = Modifier.weight(1f),
+            )
+            ScheduleTextField(
+                value = newDosage, placeholder = "Dosage", onValueChange = { newDosage = it },
+                modifier = Modifier.weight(0.7f),
+            )
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (newName.isNotBlank()) c.accent else c.bdI)
+                    .clickable(enabled = newName.isNotBlank()) {
+                        onChange(doses + SupplementDose(newName.trim(), newDosage.trim()))
+                        newName = ""
+                        newDosage = ""
+                    }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) { KText("Add", size = 13, color = Color.White, weight = FontWeight.SemiBold) }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleTextField(
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = KetoTheme.colors
+    Box(
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(c.inp)
+            .border(1.dp, c.bd, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        if (value.isEmpty()) KText(placeholder, size = 13, color = c.txtD)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(color = c.txt, fontSize = 13.sp),
+            cursorBrush = SolidColor(c.accent),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun StepperButton(symbol: String, onClick: () -> Unit) {
+    val c = KetoTheme.colors
+    Box(
+        Modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(c.surf2)
+            .border(1.dp, c.bdI, RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { KText(symbol, size = 18, color = c.txt, weight = FontWeight.Bold) }
+}
+
+@Composable
+private fun SmallButton(text: String, onClick: () -> Unit) {
+    val c = KetoTheme.colors
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, c.bd, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) { KText(text, size = 12, color = c.txtM) }
+}
+
+@Composable
+private fun DeleteScheduleDialog(name: String, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    val c = KetoTheme.colors
+    Dialog(onDismissRequest = onCancel) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(c.surf)
+                .border(1.dp, c.bdI, RoundedCornerShape(18.dp))
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            KText("Delete \"$name\"?", size = 17, color = c.gold, weight = FontWeight.Bold)
+            KText("This can't be undone.", size = 14, color = c.txtM)
+            DialogOption("Delete", "Remove this schedule permanently") { onConfirm() }
+            DialogCancelButton { onCancel() }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleImportConfirmDialog(
+    pending: PendingScheduleImport,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val c = KetoTheme.colors
+    Dialog(onDismissRequest = onCancel) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(c.surf)
+                .border(1.dp, c.bdI, RoundedCornerShape(18.dp))
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            val schedule = pending.schedule
+            if (schedule != null) {
+                KText("📥 Import \"${schedule.name}\"?", size = 17, color = c.gold, weight = FontWeight.Bold)
+                KText(
+                    "${schedule.cycleLengthDays}-day rotation, ${schedule.days.sumOf { it.size }} dose(s) total. " +
+                        "Added as a new schedule — nothing existing is changed.",
+                    size = 14, color = c.txt,
+                )
+                DialogOption("Import", "Add this schedule and open it for edits") { onConfirm() }
+                DialogCancelButton { onCancel() }
+            } else {
+                KText("⚠️ Couldn't import file", size = 17, color = c.gold, weight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    pending.errors.forEach { err -> KText("• $err", size = 13, color = c.txt) }
+                }
+                DialogCancelButton { onCancel() }
+            }
+        }
+    }
+}
+
 // ── Supplements page ──────────────────────────────────────────────────────────
 
 @Composable
@@ -551,7 +997,7 @@ private fun SettingsSupplementsPage(vm: AppViewModel, onBack: () -> Unit) {
     var newItemInput by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize()) {
-        SettingsSubHeader("💊 Supplements", onBack)
+        SettingsSubHeader("💊 As-Needed Supplements", onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -560,7 +1006,9 @@ private fun SettingsSupplementsPage(vm: AppViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             KText(
-                "These chips appear in the Supplements panel when logging a day. Tap × to remove.",
+                "For supplements you take ad hoc, not on a fixed rotation — these chips appear " +
+                    "in the As-Needed panel when logging a day. Tap × to remove. For a repeating " +
+                    "rotation with recommended dosages, use Supplement Schedule instead.",
                 size = 13, color = c.txtM,
             )
             FlowRow(

@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ketotracker.data.SnapshotMeta
+import com.ketotracker.data.SupplementSchedule
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -154,6 +155,35 @@ class PrefsStore(context: Context) {
         ds.edit { prefs -> prefs[NOTIF_MINUTE_KEY] = minute }
     }
 
+    // ── Supplement schedules ─────────────────────────────────────────────────
+
+    /** Named, repeating supplement rotations the user has created or imported. */
+    val schedules: Flow<List<SupplementSchedule>> = ds.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
+            val s = prefs[SCHEDULES_KEY] ?: return@map emptyList()
+            runCatching {
+                prefsJson.decodeFromString(ListSerializer(SupplementSchedule.serializer()), s)
+            }.getOrElse { emptyList() }
+        }
+
+    suspend fun setSchedules(schedules: List<SupplementSchedule>) {
+        ds.edit { prefs ->
+            prefs[SCHEDULES_KEY] = prefsJson.encodeToString(ListSerializer(SupplementSchedule.serializer()), schedules)
+        }
+    }
+
+    /** Id of the schedule currently driving the "Today's Supplements" widget, or null if none. */
+    val activeScheduleId: Flow<String?> = ds.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> prefs[ACTIVE_SCHEDULE_KEY] }
+
+    suspend fun setActiveScheduleId(id: String?) {
+        ds.edit { prefs ->
+            if (id == null) prefs.remove(ACTIVE_SCHEDULE_KEY) else prefs[ACTIVE_SCHEDULE_KEY] = id
+        }
+    }
+
     // ── Supplement items ──────────────────────────────────────────────────────
 
     /**
@@ -185,6 +215,8 @@ class PrefsStore(context: Context) {
         private val SNAPSHOTS_KEY         = stringPreferencesKey("snapshots")
         private val QUICK_SELECT_KEY      = stringPreferencesKey("quick_select")
         private val SUPPLEMENT_ITEMS_KEY  = stringPreferencesKey("supplement_items")
+        private val SCHEDULES_KEY         = stringPreferencesKey("supplement_schedules")
+        private val ACTIVE_SCHEDULE_KEY   = stringPreferencesKey("active_schedule_id")
         private val BACKUP_ENABLED_KEY    = booleanPreferencesKey("backup_enabled")
         private val BACKUP_FREQ_KEY       = stringPreferencesKey("backup_frequency")
         private val NOTIF_ENABLED_KEY     = booleanPreferencesKey("notif_enabled")
