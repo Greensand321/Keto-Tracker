@@ -16,6 +16,16 @@
          don't survive a restart the way WorkManager jobs do. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Lets "Photos from This Day" query MediaStore directly for photos the user
+         already took with another camera app. The system photo picker
+         (ActivityResultContracts.PickVisualMedia, used for "Choose from Gallery")
+         needs none of these — only the date-scoped MediaStore query does. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <!-- Lets the system camera app resolve for ActivityResultContracts.TakePicture()
          on Android 11+ (package-visibility requirement). No CAMERA permission is
          needed — capture is fully delegated to whatever camera app the user has. -->

@@ -49,7 +49,9 @@ android/app/src/main/java/com/ketotracker/
 │   │   └── PrefsStore.kt        #   DataStore<Preferences> — theme id + auto-theme prefs
 │   ├── photo/
 │   │   ├── PhotoStore.kt        #   on-disk compressed JPEGs in filesDir/photos/
-│   │   └── CameraCapture.kt     #   FileProvider capture target + stale-capture cleanup
+│   │   ├── CameraCapture.kt     #   FileProvider capture target + stale-capture cleanup
+│   │   ├── PhotoImport.kt       #   copies a picked/device-gallery Uri into a temp file for PhotoStore
+│   │   └── DeviceGalleryQuery.kt#   MediaStore query for device photos taken on a given date
 │   ├── notifications/
 │   │   └── NotificationHelper.kt#   reminder notification channel + builder
 │   └── io/
@@ -174,6 +176,20 @@ Photos live entirely outside the `DayEntry` JSON, as files (not in the DB):
 - **Capture**: `createCaptureTarget()` hands the system camera app a `content://` URI via
   `FileProvider` and `ActivityResultContracts.TakePicture()` — **no `CAMERA` permission**.
   The temp file lives in `cacheDir/captures/`; `clearStaleCaptures()` sweeps it on launch.
+- **Gallery picker**: "🖼️ Choose from Gallery" in `MealPhotoArea` uses
+  `ActivityResultContracts.PickVisualMedia()` — the system Photo Picker, which needs
+  **no storage permission at all**.
+- **Same-day device import**: "📅 Photos from This Day" (`DeviceDayPhotosButton` in
+  `PhotoComponents.kt`) queries `MediaStore` directly via `DeviceGalleryQuery.photosForDate()`
+  for photos already on the device (taken with another camera app, before this feature
+  existed, etc.) and shows them in a grid to import from. This is the **one** photo path that
+  needs a real runtime permission — `READ_MEDIA_IMAGES` (API 33+, or its
+  `READ_MEDIA_VISUAL_USER_SELECTED` partial-access counterpart on 34+) or
+  `READ_EXTERNAL_STORAGE` (below that) — since it bypasses the system-mediated picker.
+- **Shared import pipeline**: `importUriToTempFile()` (`data/photo/PhotoImport.kt`) copies any
+  picked/device `content://` `Uri` into the same `cacheDir/captures/` temp directory camera
+  captures use, so gallery-picked and same-day-imported photos feed the exact same
+  `PhotoStore.addFromCapture()` compression pipeline as a camera capture.
 - **Compression**: `PhotoStore.addFromCapture()` decodes with a memory-safe
   `inSampleSize`, corrects EXIF orientation, downscales to ≤900 px long edge, and
   re-encodes JPEG at quality 75. Max 5 photos per meal.
@@ -339,7 +355,8 @@ the Storage Access Framework pickers and one confirmation dialog.
 - **Permissions**: `POST_NOTIFICATIONS` (Android 13+, requested at runtime from the
   Notifications settings row), `SCHEDULE_EXACT_ALARM` (Android 12+, a user-grantable special
   permission — the settings page shows a banner + button to grant it when missing), and
-  `RECEIVE_BOOT_COMPLETED`. No camera or storage permission is needed.
+  `RECEIVE_BOOT_COMPLETED`. No camera permission is needed (see "Photos" for the media
+  permissions used by the same-day device-gallery import).
 
 ---
 

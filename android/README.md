@@ -29,7 +29,7 @@ app/src/main/java/com/ketotracker/
 │   ├── db/                      # Room: DayEntryEntity (date PK + JSON data), Dao, KetoDatabase
 │   ├── repository/              # IDayRepository + DayRepository (Room) + FakeDayRepository (previews)
 │   ├── prefs/PrefsStore.kt      # DataStore: theme + auto-theme prefs
-│   ├── photo/                   # PhotoStore (on-disk JPEGs) + camera capture
+│   ├── photo/                   # PhotoStore (on-disk JPEGs) + camera capture + gallery/device-day import
 │   ├── notifications/           # Reminder notification channel + builder
 │   └── io/                      # Export/import, snapshot store, storage stats
 ├── model/AppViewModel.kt        # Single ViewModel driving the whole app
@@ -74,7 +74,7 @@ Key design choices:
 | Calendar / month-grid view | ✅ | `CalendarPanel` + month/year wheel picker |
 | Overview list of logged days | ✅ | `OverviewSheet` (jump on tap) |
 | Local persistence (Room + DataStore) | ✅ | JSON-column table; prefs via DataStore |
-| Photos (capture, compress, store, view) | ✅ | `PhotoStore`, `MealPhotoArea`, `PhotoViewer` |
+| Photos (capture, gallery pick, same-day device import, compress, store, view) | ✅ | `PhotoStore`, `MealPhotoArea`, `DeviceGalleryQuery`, `PhotoViewer` |
 | Export / Import (JSON; merge/overwrite/skip) | ✅ | `DataPortability` (SAF) + `ImportConfirmDialog` |
 | Periodic backup + reminder notification | ✅ | `BackupWorker` (WorkManager), `ReminderScheduler`/`ReminderReceiver` (exact `AlarmManager` alarm) |
 | Storage usage stats | ✅ | `StorageUsage.compute()` + `StorageBar` |
