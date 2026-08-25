@@ -6,6 +6,7 @@ import android.content.Intent
 import com.ketotracker.data.DateUtils
 import com.ketotracker.data.db.KetoDatabase
 import com.ketotracker.data.notifications.NotificationHelper
+import com.ketotracker.data.notifications.ReminderMessages
 import com.ketotracker.data.prefs.PrefsStore
 import com.ketotracker.data.repository.DayRepository
 import kotlinx.coroutines.CoroutineScope
@@ -57,14 +58,10 @@ class ReminderReceiver : BroadcastReceiver() {
         if (breakfastDone && lunchDone && dinnerDone) return
 
         val body = when {
-            !breakfastDone && !lunchDone && !dinnerDone ->
-                "Open Keto Tracker to log today's meals and keep your streak going 💪"
-            !dinnerDone ->
-                "Almost there — just log tonight's dinner to wrap up the day 🍽️"
-            !lunchDone ->
-                "Don't forget lunch! A quick entry keeps your log complete 🥗"
-            else ->
-                "A quick log is all it takes to keep your streak alive 🍳"
+            !breakfastDone && !lunchDone && !dinnerDone -> ReminderMessages.forNothingLogged()
+            !dinnerDone -> ReminderMessages.forDinnerMissing()
+            !lunchDone -> ReminderMessages.forLunchMissing()
+            else -> ReminderMessages.forBreakfastMissing()
         }
 
         NotificationHelper.showReminder(context, body)

@@ -54,7 +54,8 @@ android/app/src/main/java/com/ketotracker/
 │   │   ├── PhotoImport.kt       #   copies a picked/device-gallery Uri into a temp file for PhotoStore
 │   │   └── DeviceGalleryQuery.kt#   MediaStore query for device photos taken on a given date
 │   ├── notifications/
-│   │   └── NotificationHelper.kt#   reminder notification channel + builder
+│   │   ├── NotificationHelper.kt#   reminder notification channel + builder
+│   │   └── ReminderMessages.kt  #   pooled, randomized reminder body copy (per missing-meal state)
 │   └── io/
 │       ├── DataPortability.kt   #   JSON encode/decode/merge for export & import
 │       ├── SnapshotStore.kt     #   snapshot persistence helper
@@ -395,6 +396,11 @@ the Storage Access Framework pickers and one confirmation dialog.
   `AlarmManager` alarms (unlike WorkManager jobs) don't survive one.
 - **`data/notifications/NotificationHelper.kt`** — builds the notification channel + the
   reminder notification (gold icon tint via `R.color.keto_gold`).
+- **`data/notifications/ReminderMessages.kt`** — the reminder body text. Stays context-aware
+  (which meal(s) are still missing decides the pool) but each state has ~7-8 motivational
+  variants instead of one fixed line, picked with `.random()` each time the alarm fires, so
+  the daily nudge doesn't read identically forever. `SettingsSheet`'s notification preview
+  card draws from the same pools (`remember`ed per hour so it doesn't jitter on recomposition).
 - **`data/prefs/PrefsStore.kt`** — persists `notificationHour` *and* `notificationMinute` (the
   Notifications settings page has a full custom time picker, not just the three quick presets).
 - **Permissions**: `POST_NOTIFICATIONS` (Android 13+, requested at runtime from the
